@@ -1047,17 +1047,21 @@ class UIManager {
       body.appendChild(p);
     }
 
-    // Auto-scroll
-    const main = document.getElementById('reader-main');
-    main.scrollTop = main.scrollHeight;
+    // 智能滚动：只在用户已经在底部时才自动跟进
+    const content = document.getElementById('reader-content');
+    const atBottom = content.scrollHeight - content.scrollTop - content.clientHeight < 80;
+    if (atBottom) {
+      content.scrollTop = content.scrollHeight;
+    }
   }
 
   showTypingIndicator(show) {
     const indicator = document.getElementById('typing-indicator');
     indicator.classList.toggle('hidden', !show);
     if (show) {
-      const main = document.getElementById('reader-main');
-      main.scrollTop = main.scrollHeight;
+      // 只在开始时滚到 reader-content 底部
+      const content = document.getElementById('reader-content');
+      content.scrollTop = content.scrollHeight;
     }
   }
 
