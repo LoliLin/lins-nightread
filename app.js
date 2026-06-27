@@ -8,7 +8,7 @@ class StorageManager {
 
     this.dbName = 'nightread-db';
 
-    this.dbVersion = 2;
+    this.dbVersion = 3;
 
     this.db = null;
 
@@ -56,6 +56,20 @@ class StorageManager {
 
           chaptersStore.createIndex('novelId_branch', ['novelId', 'branchId', 'chapterNumber'], { unique: true });
 
+        }
+
+        if (db.objectStoreNames.contains('chapters')) {
+
+          // DB v2→3: remove unique constraint on novelId_chapter so branches can coexist
+          try {
+            const chaptersStore = e.target.transaction.objectStore('chapters');
+            if (chaptersStore.indexNames.contains('novelId_chapter')) {
+              chaptersStore.deleteIndex('novelId_chapter');
+              chaptersStore.createIndex('novelId_chapter', ['novelId', 'chapterNumber'], { unique: false });
+            }
+          } catch (e) {
+            console.warn('Index migration note:', e);
+          }
         }
 
         if (!db.objectStoreNames.contains('branches')) {
