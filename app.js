@@ -1011,8 +1011,13 @@ class UIManager {
     document.getElementById('nav-reader-tab').style.display = '';
     document.getElementById('reader-main').scrollTop = 0;
 
+    // 桌面端默认显示侧栏，移动端默认隐藏（通过 toggle 展开）
     this.sidebarOpen = window.innerWidth > 900;
     this._updateSidebarVisibility();
+    // 确保桌面端侧栏不被其他样式或之前的 display:none 盖住
+    if (window.innerWidth > 900) {
+      document.getElementById('reader-sidebar').style.removeProperty('display');
+    }
   }
 
   _formatChapterContent(content) {
@@ -1915,8 +1920,16 @@ class App {
       return;
     }
 
-    // 分支选项/下一章按钮
-    const btn = e.target.closest('.choice-btn, .next-chapter-btn');
+    // 分支选项/下一章按钮 — 用 matches 兜底查 target 和 parent
+    const target = e.target;
+    let btn = null;
+    if (target.matches?.('.choice-btn, .next-chapter-btn')) {
+      btn = target;
+    } else if (target.parentElement?.matches?.('.choice-btn, .next-chapter-btn')) {
+      btn = target.parentElement;
+    } else {
+      btn = target.closest('.choice-btn, .next-chapter-btn');
+    }
     if (!btn) return;
 
     // "阅读下一章" — 无选择，直接继续
@@ -1933,7 +1946,8 @@ class App {
 
     // 分支选择
     const choiceId = btn.dataset.choiceId;
-    const choiceText = btn.textContent?.replace(/^[①②③]\s*/, '').trim();
+    // 从按钮文本提取选择描述（去掉前面的标记字符）
+    const choiceText = btn.textContent?.replace(/^[①②③]\s*/, '').trim() || '';
 
     // 动态重写后续大纲
     const currentNode = this.currentOutline?.nodes?.[this.currentChapterNum - 1];
