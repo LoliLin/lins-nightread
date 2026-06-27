@@ -123,17 +123,19 @@
 
           <div class="form-group">
             <label for="novel-genre">题材类型</label>
-            <select id="novel-genre" class="input-dark">
-              <option value="">-- 选择题材 --</option>
-              <option value="玄幻">玄幻 / 东方奇幻</option>
-              <option value="科幻">科幻 / 赛博朋克</option>
-              <option value="都市">都市 / 现代言情</option>
-              <option value="悬疑">悬疑 / 推理</option>
-              <option value="武侠">武侠 / 仙侠</option>
-              <option value="末世">末世 / 废土</option>
-              <option value="奇幻">西方奇幻 / 剑与魔法</option>
-              <option value="历史">历史 / 架空</option>
-            </select>
+            <div class="combo-input">
+              <input type="text" id="novel-genre" class="input-dark" list="genre-presets" placeholder="选择或输入题材...">
+              <datalist id="genre-presets">
+                <option value="玄幻">
+                <option value="科幻">
+                <option value="都市">
+                <option value="悬疑">
+                <option value="武侠">
+                <option value="末世">
+                <option value="奇幻">
+                <option value="历史">
+              </datalist>
+            </div>
           </div>
 
           <div class="form-group">

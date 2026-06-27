@@ -1823,7 +1823,9 @@ n    // 移动端长按 -> 签出分支
       }
       datalist.innerHTML = fetchedModels.map(m => `<option value="${m}">`).join('');
       modelInput.value = fetchedModels[0];
-      resultEl.innerHTML = `✓ 找到 ${fetchedModels.length} 个模型，已填入第一个。<br><small>点击输入框可查看全部</small>`;
+      modelInput.focus();
+      modelInput.select();
+      resultEl.innerHTML = `✓ 找到 ${fetchedModels.length} 个模型，已填入第一个。<br><small>点击输入框或按 ↓ 查看全部</small>`;
       resultEl.style.color = 'var(--success)';
     } else {
       resultEl.textContent = '⚠ 未能自动获取模型列表，请手动输入模型名称';
