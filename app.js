@@ -1050,11 +1050,55 @@ class UIManager {
 
     // 清空底部操作区，等展示时再填
 
+
+
     document.getElementById('reader-choices').innerHTML = '';
+
+
 
     document.getElementById('nav-reader-tab').style.display = '';
 
+
+
     document.getElementById('reader-main').scrollTop = 0;
+
+
+
+    // 更新分支标签
+
+
+
+    const badge = document.getElementById('branch-badge');
+
+
+
+    if (window._app?.currentBranchId && window._app?.currentBranchId !== 'main') {
+
+
+
+      badge.textContent = window._app.currentBranchId.slice(-8);
+
+
+
+      badge.classList.remove('hidden');
+
+
+
+    } else {
+
+
+
+      badge.textContent = '主分支';
+
+
+
+      badge.classList.add('hidden');
+
+
+
+    }
+
+
 
   }
 
@@ -1278,7 +1322,52 @@ class UIManager {
       html += `<p style="margin-top:6px;font-style:italic">氛围：${this._escape(bible.atmosphere)}</p>`;
     }
     container.innerHTML = html || '<p class="text-muted" style="font-size:0.8rem">暂无世界观数据</p>';
+
   }
+
+
+
+  updateBranchList(branches, currentBranchId) {
+
+    const container = document.getElementById('branch-list');
+
+    if (!branches || branches.length === 0) {
+
+      container.innerHTML = '';
+
+      return;
+
+    }
+
+
+
+    container.innerHTML = branches.map(b => {
+
+      const isMain = b.id.endsWith('_main');
+
+      const isCurrent = b.id === currentBranchId;
+
+      const label = isMain ? '主分支' : `✤ ${b.forkPrompt.slice(0, 18)}${b.forkPrompt.length > 18 ? '...' : ''}`;
+
+      const detail = isMain ? '' : `第 ${b.forkChapter} 章签出`;
+
+      return `
+
+        <div class="branch-item ${isCurrent ? 'current' : ''}" data-branch-id="${b.id}">
+
+          <div class="branch-item-label">${label}</div>
+
+          ${detail ? `<div class="branch-item-detail">${detail}</div>` : ''}
+
+        </div>
+
+      `;
+
+    }).join('');
+
+  }
+
+
 
   toggleSidebar() {
 
@@ -1412,7 +1501,13 @@ class App {
 
     document.getElementById('outline-progress').addEventListener('click', (e) => this._onOutlineNodeClick(e));
 
+
+
     document.getElementById('outline-progress').addEventListener('contextmenu', (e) => this._onSidebarContextMenu(e));
+
+
+
+    document.getElementById('branch-list').addEventListener('click', (e) => this._onBranchClick(e));
 
     // Close branch context menu on click outside
 
@@ -1983,17 +2078,39 @@ class App {
 
     const bible = await this.storage.getBible(novelId);
 
+
+
     const outline = await this.storage.getOutline(novelId);
+
+
+
+    this._allBranches = await this.storage.getBranches(novelId);
+
+
+
+    this.currentBranchId = 'main';
+
+
 
     const chapters = await this.storage.getChaptersByBranch(novelId, this.currentBranchId);
 
 
 
+
+
+
+
     this.currentNovel = novel;
+
+
 
     this.currentBible = bible;
 
+
+
     this.currentOutline = outline;
+
+
 
     this.currentChapters = chapters;
 
@@ -2038,9 +2155,19 @@ class App {
   }
 
   _updateReaderSidebar() {
+
     this.ui.updateOutlineProgress(this.currentOutline, this.currentChapterNum, this.currentChapters);
+
     this.ui.updateCharacterList(this.currentBible);
+
     this.ui.updateWorldRules(this.currentBible);
+
+    if (this._allBranches) {
+
+      this.ui.updateBranchList(this._allBranches, this.currentBranchId);
+
+    }
+
   }
 
   async _generateChapter(chapterNum, nodeId) {
@@ -2297,39 +2424,131 @@ class App {
   }
 
   async _onBranchSubmit(chapterNum) {
+
     const prompt = document.getElementById('branch-prompt-input')?.value?.trim();
+
     if (!prompt) {
-      this.ui.toast('\u8bf7\u8f93\u5165\u5206\u652f\u63d0\u793a\u8bcd', 'warning');
+
+      this.ui.toast('请输入分支提示词', 'warning');
+
       return;
+
     }
 
-    // Create new branch
+
+
     const branchId = `${this.currentNovel.id}_branch_${Date.now()}`;
+
+
+
+    // 从老分支继承 forkChapter 之前的所有章节
+
+    const parentChapters = await this.storage.getChaptersByBranch(this.currentNovel.id, this.currentBranchId);
+
+    const forkChapters = parentChapters.filter(c => c.chapterNumber <= chapterNum);
+
+
+
+    for (const ch of forkChapters) {
+
+      const newCh = { ...ch, id: `${branchId}_ch_${ch.chapterNumber}`, branchId };
+
+      await this.storage.saveChapter(newCh);
+
+    }
+
+
+
+    // 创建分支记录
+
     const branch = {
+
       id: branchId,
+
       novelId: this.currentNovel.id,
+
       parentBranchId: this.currentBranchId,
+
       forkChapter: chapterNum,
+
       forkPrompt: prompt,
+
       createdAt: Date.now()
+
     };
+
     await this.storage.saveBranch(branch);
 
-    // Switch to new branch
+
+
+    // 切换分支上下文
+
     this.currentBranchId = branchId;
+
     this.currentChapterNum = chapterNum;
+
     this.currentChapters = await this.storage.getChaptersByBranch(this.currentNovel.id, branchId);
 
-    // Generate next chapter in the new branch
-    const nextNodeId = this.currentOutline?.nodes?.[chapterNum]?.id;
-    if (nextNodeId) {
-      await this._generateChapter(chapterNum + 1, nextNodeId);
+
+
+    // 展示 forkChapter 并生成下一章
+
+    const forkChapter = this.currentChapters.find(c => c.chapterNumber === chapterNum);
+
+    if (forkChapter) {
+
+      this.ui.showReader(this.currentNovel, forkChapter);
+
     }
 
-    this.ui.toast(`已签出新分支「${prompt.slice(0, 20)}${prompt.length > 20 ? '...' : ''}」`, 'success');
     this._updateReaderSidebar();
-  }
 
+
+
+    // 生成下一章
+
+    const nextNodeId = this.currentOutline?.nodes?.[chapterNum]?.id;
+
+    if (nextNodeId) {
+
+      await this._generateChapter(chapterNum + 1, nextNodeId);
+
+    }
+
+
+
+    this.ui.toast(`已签出新分支「${prompt.slice(0, 20)}${prompt.length > 20 ? '...' : ''}」`, 'success');
+
+    this.ui.hideModal();
+
+  }
+
+  async _onBranchClick(e) {
+    const item = e.target.closest('.branch-item');
+    if (!item || item.classList.contains('current')) return;
+    const branchId = item.dataset.branchId;
+    if (!branchId || branchId === this.currentBranchId) return;
+
+    // Switch branch
+    this.currentBranchId = branchId;
+    this.currentChapters = await this.storage.getChaptersByBranch(this.currentNovel.id, branchId);
+
+    const lastCh = this.currentChapters[this.currentChapters.length - 1];
+    if (lastCh) {
+      this.currentChapterNum = lastCh.chapterNumber;
+      this.ui.showReader(this.currentNovel, lastCh);
+      const isEnding = this.currentOutline?.nodes?.[lastCh.chapterNumber - 1]?.isEnding || false;
+      this.ui.showReaderBottom(lastCh.chapterNumber, isEnding);
+    } else {
+      // Branch has no chapters — go to fork point
+      const branchMeta = this._allBranches?.find(b => b.id === branchId);
+      this.currentChapterNum = branchMeta?.forkChapter || 1;
+      this.ui.showReader(this.currentNovel, { chapterNumber: this.currentChapterNum });
+    }
+    this._updateReaderSidebar();
+    this.ui.toast(`已切换到 ${branchId.endsWith('_main') ? '主分支' : '分支'}`, 'info');
+  }
+
   async _onDownloadBook() {
     if (!this.currentNovel) {
       this.ui.toast('没有可下载的书籍', 'warning');
@@ -2361,11 +2580,16 @@ class App {
           id: n.id, title: n.title, summary: n.summary
         }))
       } : null,
-      chapters: chapters.sort((a, b) => a.chapterNumber - b.chapterNumber).map(c => ({
-        chapterNumber: c.chapterNumber,
-        title: c.title,
-        content: c.content,
-        summary: c.summary
+      chapters: chapters.sort((a, b) => a.chapterNumber - b.chapterNumber).map(c => ({
+
+        chapterNumber: c.chapterNumber,
+
+        title: c.title,
+
+        content: c.content,
+
+        summary: c.summary
+
       }))
     };
 
