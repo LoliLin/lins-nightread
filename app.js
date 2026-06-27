@@ -1067,30 +1067,33 @@ class UIManager {
     // 更新分支标签
 
 
-
     const badge = document.getElementById('branch-badge');
 
-
-
-    if (window._app?.currentBranchId && window._app?.currentBranchId !== 'main') {
-
-
-
-      badge.textContent = window._app.currentBranchId.slice(-8);
-
-
-
+    // 只在子分支显示分支标签
+    const isSubBranch = window._app?.currentBranchId && window._app?.currentBranchId.includes('_branch_');
+    if (isSubBranch) {
+      badge.textContent = '✤ ' + window._app.currentBranchId.slice(-6);
       badge.classList.remove('hidden');
-
-
-
     } else {
+      badge.classList.add('hidden');
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
       badge.textContent = '主分支';
-
-
 
       badge.classList.add('hidden');
 
@@ -1129,22 +1132,20 @@ class UIManager {
       body.appendChild(p);
     }
 
-    // 智能滚动：只在用户已经在底部时才自动跟进
-    const content = document.getElementById('reader-content');
-    const atBottom = content.scrollHeight - content.scrollTop - content.clientHeight < 80;
-    if (atBottom) {
-      content.scrollTop = content.scrollHeight;
-    }
+    // 不自动滚动，让用户自己控制阅读位置
+
   }
 
+
+
   showTypingIndicator(show) {
+
     const indicator = document.getElementById('typing-indicator');
+
     indicator.classList.toggle('hidden', !show);
-    if (show) {
-      // 只在开始时滚到 reader-content 底部
-      const content = document.getElementById('reader-content');
-      content.scrollTop = content.scrollHeight;
-    }
+
+    // 不自动滚动，让用户自己控制阅读位置
+
   }
 
   showReaderBottom(chapterNum, isEnding) {
@@ -1406,9 +1407,17 @@ class App {
 
     this.currentChapters = [];
 
+
+
     this.currentChapterNum = 1;
 
-    this.currentBranchId = 'main';
+
+
+    this.currentBranchId = null;  // 在 _loadNovelForReading / _onWizardStartRead 中设置
+
+
+
+
 
 
 
@@ -1604,7 +1613,9 @@ class App {
 
     document.getElementById('branch-prompt-submit').addEventListener('click', async (e) => {
 
-      const chapterNum = parseInt(e.target.dataset.chapter);
+
+
+      const chapterNum = parseInt(e.currentTarget.dataset.chapter);
 
       if (chapterNum) {
 
@@ -2038,17 +2049,29 @@ class App {
 
     // Set current context
 
+
+
     this.currentNovel = novel;
+
+
 
     this.currentBible = bible;
 
+
+
     this.currentOutline = outline;
+
+
 
     this.currentChapters = [];
 
+
+
     this.currentChapterNum = 1;
 
-    this.currentBranchId = 'main';
+
+
+    this.currentBranchId = mainBranch.id;
 
 
 
@@ -2088,11 +2111,75 @@ class App {
 
 
 
-    this.currentBranchId = 'main';
 
 
 
-    const chapters = await this.storage.getChaptersByBranch(novelId, this.currentBranchId);
+
+    // 找到主分支记录并用它的实际 id
+
+
+
+    const mainBranch = this._allBranches?.find(b => b.forkChapter === 0 && b.parentBranchId === null);
+
+
+
+    this.currentBranchId = mainBranch ? mainBranch.id : 'main';
+
+
+
+
+
+
+
+    let chapters = await this.storage.getChaptersByBranch(novelId, this.currentBranchId);
+
+
+
+
+
+
+
+    // 兼容旧数据：如果主分支没有章节但存在 'main' 标签的章节，迁移它们
+
+
+
+    if (chapters.length === 0 && this.currentBranchId !== 'main') {
+
+
+
+      const legacyChapters = await this.storage.getChaptersByBranch(novelId, 'main');
+
+
+
+      if (legacyChapters.length > 0) {
+
+
+
+        for (const ch of legacyChapters) {
+
+
+
+          const migrated = { ...ch, id: `${this.currentBranchId}_ch_${ch.chapterNumber}`, branchId: this.currentBranchId };
+
+
+
+          await this.storage.saveChapter(migrated);
+
+
+
+        }
+
+
+
+        chapters = await this.storage.getChaptersByBranch(novelId, this.currentBranchId);
+
+
+
+      }
+
+
+
+    }
 
 
 
@@ -2405,7 +2492,9 @@ class App {
       return;
     }
     this.currentChapterNum++;
-    this._generateChapter(this.currentChapterNum, nextNodeId);
+
+    await this._generateChapter(this.currentChapterNum, nextNodeId);
+
   }
 
   _onSidebarContextMenu(e) {
@@ -2514,41 +2603,71 @@ class App {
       await this._generateChapter(chapterNum + 1, nextNodeId);
 
     }
-
+    // overlay already hidden above
 
 
     this.ui.toast(`已签出新分支「${prompt.slice(0, 20)}${prompt.length > 20 ? '...' : ''}」`, 'success');
 
-    this.ui.hideModal();
-
-  }
-
-  async _onBranchClick(e) {
-    const item = e.target.closest('.branch-item');
-    if (!item || item.classList.contains('current')) return;
-    const branchId = item.dataset.branchId;
-    if (!branchId || branchId === this.currentBranchId) return;
-
-    // Switch branch
-    this.currentBranchId = branchId;
-    this.currentChapters = await this.storage.getChaptersByBranch(this.currentNovel.id, branchId);
-
-    const lastCh = this.currentChapters[this.currentChapters.length - 1];
-    if (lastCh) {
-      this.currentChapterNum = lastCh.chapterNumber;
-      this.ui.showReader(this.currentNovel, lastCh);
-      const isEnding = this.currentOutline?.nodes?.[lastCh.chapterNumber - 1]?.isEnding || false;
-      this.ui.showReaderBottom(lastCh.chapterNumber, isEnding);
-    } else {
-      // Branch has no chapters — go to fork point
-      const branchMeta = this._allBranches?.find(b => b.id === branchId);
-      this.currentChapterNum = branchMeta?.forkChapter || 1;
-      this.ui.showReader(this.currentNovel, { chapterNumber: this.currentChapterNum });
-    }
-    this._updateReaderSidebar();
-    this.ui.toast(`已切换到 ${branchId.endsWith('_main') ? '主分支' : '分支'}`, 'info');
-  }
-
+    this.ui.hideModal();
+
+
+
+  }
+
+
+
+  async _onBranchClick(e) {
+
+    const item = e.target.closest('.branch-item');
+
+    if (!item || item.classList.contains('current')) return;
+
+    const branchId = item.dataset.branchId;
+
+    if (!branchId || branchId === this.currentBranchId) return;
+
+
+
+    // Switch branch
+
+    this.currentBranchId = branchId;
+
+    this.currentChapters = await this.storage.getChaptersByBranch(this.currentNovel.id, branchId);
+
+
+
+    const lastCh = this.currentChapters[this.currentChapters.length - 1];
+
+    if (lastCh) {
+
+      this.currentChapterNum = lastCh.chapterNumber;
+
+      this.ui.showReader(this.currentNovel, lastCh);
+
+      const isEnding = this.currentOutline?.nodes?.[lastCh.chapterNumber - 1]?.isEnding || false;
+
+      this.ui.showReaderBottom(lastCh.chapterNumber, isEnding);
+
+    } else {
+
+      // Branch has no chapters — go to fork point
+
+      const branchMeta = this._allBranches?.find(b => b.id === branchId);
+
+      this.currentChapterNum = branchMeta?.forkChapter || 1;
+
+      this.ui.showReader(this.currentNovel, { chapterNumber: this.currentChapterNum });
+
+    }
+
+    this._updateReaderSidebar();
+
+    this.ui.toast(`已切换到 ${branchId.endsWith('_main') ? '主分支' : '分支'}`, 'info');
+
+  }
+
+
+
   async _onDownloadBook() {
     if (!this.currentNovel) {
       this.ui.toast('没有可下载的书籍', 'warning');
