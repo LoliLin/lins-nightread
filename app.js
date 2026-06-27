@@ -1576,7 +1576,7 @@ class App {
 
 
     document.getElementById('outline-progress').addEventListener('contextmenu', (e) => this._onSidebarContextMenu(e));
-n    // 移动端长按 -> 签出分支
+    // 移动端长按 -> 签出分支
     let _longPressTimer = null;
     document.getElementById('outline-progress').addEventListener('touchstart', (e) => {
       const nodeEl = e.target.closest('.outline-node.clickable');
@@ -1827,6 +1827,8 @@ n    // 移动端长按 -> 签出分支
   }
 
   async _onFetchModels() {
+    try {
+      console.log('[NightRead] Fetch models clicked');
     const preset = document.getElementById('settings-api-preset').value;
     const apiKey = document.getElementById('settings-api-key').value.trim();
     const apiUrl = document.getElementById('settings-api-url').value.trim();
@@ -1912,6 +1914,10 @@ n    // 移动端长按 -> 签出分支
     } else {
       resultEl.textContent = '⚠ 未能自动获取模型列表，请手动输入模型名称';
       resultEl.style.color = 'var(--warning)';
+    }
+    } catch (e) {
+      console.error('[NightRead] Fetch models error:', e);
+      this.ui.toast(`获取模型失败: ${e.message}`, 'error');
     }
   }
 
@@ -2925,6 +2931,9 @@ n    // 移动端长按 -> 签出分支
 }
 
 // ==================== BOOTSTRAP ====================
+window.addEventListener('error', (e) => {
+  console.error('[NightRead GLOBAL]', e.error?.stack || e.message);
+});
 document.addEventListener('DOMContentLoaded', () => {
   const app = new App();
   app.init().catch(e => {
