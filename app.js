@@ -1090,19 +1090,6 @@ class UIManager {
 
 
 
-
-
-
-      badge.textContent = '主分支';
-
-      badge.classList.add('hidden');
-
-
-
-    }
-
-
-
   }
 
   _formatChapterContent(content) {
@@ -2480,7 +2467,7 @@ class App {
 
   }
 
-  _onReaderBottomClick(e) {
+  async _onReaderBottomClick(e) {
     if (this.isGenerating) return;
 
     const btn = e.target.closest('.next-chapter-btn');
