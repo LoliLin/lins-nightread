@@ -1351,7 +1351,7 @@ class UIManager {
 
       const isCurrent = b.id === currentBranchId;
 
-      const label = isMain ? '主分支' : `✤ ${b.forkPrompt.slice(0, 18)}${b.forkPrompt.length > 18 ? '...' : ''}`;
+      const label = isMain ? '主分支' : `✤ ${(b.name || b.forkPrompt).slice(0, 18)}${(b.name || b.forkPrompt).length > 18 ? '...' : ''}`;
 
       const detail = isMain ? '' : `第 ${b.forkChapter} 章签出`;
 
@@ -1516,6 +1516,23 @@ class App {
 
 
     document.getElementById('outline-progress').addEventListener('contextmenu', (e) => this._onSidebarContextMenu(e));
+n    // 移动端长按 -> 签出分支
+    let _longPressTimer = null;
+    document.getElementById('outline-progress').addEventListener('touchstart', (e) => {
+      const nodeEl = e.target.closest('.outline-node.clickable');
+      if (!nodeEl) return;
+      _longPressTimer = setTimeout(() => {
+        const touch = e.touches[0];
+        const ch = parseInt(nodeEl.dataset.chapter);
+        if (ch && !isNaN(ch)) this.ui.showBranchMenu(ch, touch.clientX, touch.clientY);
+      }, 500);
+    });
+    document.getElementById('outline-progress').addEventListener('touchend', () => {
+      if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+    });
+    document.getElementById('outline-progress').addEventListener('touchmove', () => {
+      if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+    });
 
 
 
@@ -2532,6 +2549,8 @@ class App {
 
     try {
 
+    const name = document.getElementById('branch-name-input')?.value?.trim() || '';
+
     const prompt = document.getElementById('branch-prompt-input')?.value?.trim();
 
     if (!prompt) {
@@ -2568,6 +2587,8 @@ class App {
 
     // 创建分支记录
 
+    const branchName = name || prompt.slice(0, 20);
+
     const branch = {
 
       id: branchId,
@@ -2575,6 +2596,8 @@ class App {
       novelId: this.currentNovel.id,
 
       parentBranchId: this.currentBranchId,
+
+      name: branchName,
 
       forkChapter: chapterNum,
 
