@@ -257,9 +257,8 @@
             </div>
           </div>
 
-          <!-- Bottom: Choices -->
+          <!-- Bottom: Reader controls -->
           <div class="reader-choices" id="reader-choices">
-            <!-- Dynamically filled -->
           </div>
         </main>
 
@@ -354,6 +353,22 @@
 
         <div class="settings-footer">
           <button id="btn-settings-save" class="btn-primary">保存设置</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== BRANCH CONTEXT MENU ==================== -->
+    <div id="branch-context-menu" class="hidden"></div>
+
+    <!-- ==================== BRANCH PROMPT OVERLAY ==================== -->
+    <div id="branch-prompt-overlay" class="hidden">
+      <div class="branch-prompt-card">
+        <h4>从 <span id="branch-prompt-chapter">第 N 章</span> 签出新分支</h4>
+        <p class="text-muted" style="font-size:0.85rem;margin-bottom:12px">输入提示词，AI 将根据你的指引生成不同走向的章节内容。</p>
+        <input type="text" id="branch-prompt-input" class="input-dark" placeholder="输入提示词...">
+        <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+          <button id="branch-prompt-cancel" class="btn-secondary">取消</button>
+          <button id="branch-prompt-submit" class="btn-primary">确认签出</button>
         </div>
       </div>
     </div>

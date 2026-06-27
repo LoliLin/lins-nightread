@@ -5,31 +5,67 @@
 // ==================== STORAGE MANAGER ====================
 class StorageManager {
   constructor() {
+
     this.dbName = 'nightread-db';
-    this.dbVersion = 1;
+
+    this.dbVersion = 2;
+
     this.db = null;
+
   }
 
+
+
   async init() {
+
     return new Promise((resolve, reject) => {
+
       const request = indexedDB.open(this.dbName, this.dbVersion);
+
       request.onupgradeneeded = (e) => {
+
         const db = e.target.result;
+
         if (!db.objectStoreNames.contains('novels')) {
+
           const novelsStore = db.createObjectStore('novels', { keyPath: 'id' });
+
           novelsStore.createIndex('createdAt', 'createdAt', { unique: false });
+
         }
+
         if (!db.objectStoreNames.contains('bibles')) {
+
           db.createObjectStore('bibles', { keyPath: 'novelId' });
+
         }
+
         if (!db.objectStoreNames.contains('outlines')) {
+
           db.createObjectStore('outlines', { keyPath: 'novelId' });
+
         }
+
         if (!db.objectStoreNames.contains('chapters')) {
+
           const chaptersStore = db.createObjectStore('chapters', { keyPath: 'id' });
+
           chaptersStore.createIndex('novelId', 'novelId', { unique: false });
+
           chaptersStore.createIndex('novelId_chapter', ['novelId', 'chapterNumber'], { unique: true });
+
+          chaptersStore.createIndex('novelId_branch', ['novelId', 'branchId', 'chapterNumber'], { unique: true });
+
         }
+
+        if (!db.objectStoreNames.contains('branches')) {
+
+          const branchesStore = db.createObjectStore('branches', { keyPath: 'id' });
+
+          branchesStore.createIndex('novelId', 'novelId', { unique: false });
+
+        }
+
       };
       request.onsuccess = (e) => {
         this.db = e.target.result;
@@ -71,25 +107,67 @@ class StorageManager {
   }
 
   async deleteNovel(id) {
-    const tx = this.db.transaction(['novels', 'bibles', 'outlines', 'chapters'], 'readwrite');
+
+    const tx = this.db.transaction(['novels', 'bibles', 'outlines', 'chapters', 'branches'], 'readwrite');
+
     tx.objectStore('novels').delete(id);
+
     tx.objectStore('bibles').delete(id);
+
     tx.objectStore('outlines').delete(id);
+
     // Delete all chapters for this novel
+
     const chaptersStore = tx.objectStore('chapters');
-    const index = chaptersStore.index('novelId');
-    const cursorReq = index.openCursor(IDBKeyRange.only(id));
-    cursorReq.onsuccess = (e) => {
+
+    const chIndex = chaptersStore.index('novelId');
+
+    const chCursorReq = chIndex.openCursor(IDBKeyRange.only(id));
+
+    chCursorReq.onsuccess = (e) => {
+
       const cursor = e.target.result;
+
       if (cursor) {
+
         chaptersStore.delete(cursor.primaryKey);
+
         cursor.continue();
+
       }
+
     };
+
+    // Delete all branches for this novel
+
+    const branchesStore = tx.objectStore('branches');
+
+    const brIndex = branchesStore.index('novelId');
+
+    const brCursorReq = brIndex.openCursor(IDBKeyRange.only(id));
+
+    brCursorReq.onsuccess = (e) => {
+
+      const cursor = e.target.result;
+
+      if (cursor) {
+
+        branchesStore.delete(cursor.primaryKey);
+
+        cursor.continue();
+
+      }
+
+    };
+
     return new Promise((resolve, reject) => {
+
       tx.oncomplete = () => resolve();
+
       tx.onerror = () => reject(tx.error);
+
     });
+
   }
 
   // --- Bibles ---
@@ -129,37 +207,119 @@ class StorageManager {
   }
 
   async saveChapter(chapter) {
+
     const store = this._store('chapters', 'readwrite');
+
     return this._promisify(store.put(chapter));
+
   }
+
+
+
+  async getChaptersByBranch(novelId, branchId) {
+
+    const store = this._store('chapters');
+
+    const index = store.index('novelId');
+
+    const all = await this._promisify(index.getAll(novelId));
+
+    return all.filter(c => c.branchId === branchId).sort((a, b) => a.chapterNumber - b.chapterNumber);
+
+  }
+
+
+
+  // --- Branches ---
+
+  async getBranches(novelId) {
+
+    const store = this._store('branches');
+
+    const index = store.index('novelId');
+
+    const branches = await this._promisify(index.getAll(novelId));
+
+    return branches.sort((a, b) => a.createdAt - b.createdAt);
+
+  }
+
+
+
+  async saveBranch(branch) {
+
+    const store = this._store('branches', 'readwrite');
+
+    return this._promisify(store.put(branch));
+
+  }
+
+
 
   async exportAll() {
+
     const novels = await this.getAllNovels();
-    const data = { novels, bibles: [], outlines: [], chapters: [] };
+
+    const data = { novels, bibles: [], outlines: [], chapters: [], branches: [] };
+
     for (const novel of novels) {
+
       const bible = await this.getBible(novel.id);
+
       if (bible) data.bibles.push(bible);
+
       const outline = await this.getOutline(novel.id);
+
       if (outline) data.outlines.push(outline);
+
       const chapters = await this.getChapters(novel.id);
+
       data.chapters.push(...chapters);
+
+      const branches = await this.getBranches(novel.id);
+
+      data.branches.push(...branches);
+
     }
+
     return data;
+
   }
 
+
+
   async importAll(data) {
+
     if (data.novels) {
+
       for (const novel of data.novels) await this.saveNovel(novel);
+
     }
+
     if (data.bibles) {
+
       for (const bible of data.bibles) await this.saveBible(bible);
+
     }
+
     if (data.outlines) {
+
       for (const outline of data.outlines) await this.saveOutline(outline);
+
     }
+
     if (data.chapters) {
+
       for (const chapter of data.chapters) await this.saveChapter(chapter);
+
     }
+
+    if (data.branches) {
+
+      for (const branch of data.branches) await this.saveBranch(branch);
+
+    }
+
   }
 
   async clearAll() {
@@ -579,260 +739,130 @@ ${bibleSummary}
   }
 
   /**
+
    * Generate a single chapter
+
    */
-  async generateChapter(bible, outline, novel, chapterNumber, nodeId, choiceText, previousSummary, previousChapterFull, onToken = null) {
+
+  async generateChapter(bible, outline, novel, chapterNumber, nodeId, previousSummary, previousChapterFull, onToken = null) {
+
     const bibleContext = this._formatBibleContext(bible);
+
     const node = outline.nodes?.find(n => n.id === nodeId) || {};
+
     const nodeInfo = `本章大纲节点：${node.title || '待定'}\n本章概要：${node.summary || '根据故事自然发展'}`;
+
+
 
     const systemPrompt = `你是一个专业的小说作家。根据以下完整的设定和大纲，写出精彩的小说章节。
 
+
+
 ${bibleContext}
 
-【写作要求】
-- 题材：${novel.genre || '不限'}
-- 文风：${novel.style || '文学性'}
-- 每章 1500-3000 字
-- 章节结尾要自然地引出选择点
-- 描写细腻，对话生动，情节推进有力
-- 使用中文写作
-- 章节末尾用 "---CHOICES---" 分隔符标注 2-3 个读者选择（如果大纲中有选择点的话）
-  每个选择格式：
-  [选项A] 具体的选择描述
-  [选项B] 具体的选择描述
 
-如果大纲中当前节点没有 choices，则自然结尾，不要标注选择。`;
+
+【写作要求】
+
+- 题材：${novel.genre || '不限'}
+
+- 文风：${novel.style || '文学性'}
+
+- 每章 1500-3000 字
+
+- 描写细腻，对话生动，情节推进有力
+
+- 使用中文写作`;
+
+
 
     const contextParts = [];
+
     if (previousSummary) {
+
       contextParts.push(`【前情提要】\n${previousSummary}`);
+
     }
+
     if (previousChapterFull) {
+
       contextParts.push(`【上一章完整内容】\n${previousChapterFull.slice(-2000)}`);
+
     }
+
     contextParts.push(`【本章大纲】\n${nodeInfo}`);
 
-    if (choiceText) {
-      contextParts.push(`【读者上一章的选择】\n${choiceText}`);
-    }
+
 
     const userPrompt = `请写出《${novel.title || '未命名'}》的第 ${chapterNumber} 章。
 
+
+
 ${contextParts.join('\n\n')}
+
+
 
 请开始写作。`;
 
+
+
     const messages = [
+
       { role: 'system', content: systemPrompt },
+
       { role: 'user', content: userPrompt }
+
     ];
 
+
+
     let rawText = '';
+
     await this.api.streamChat(messages, {
+
       temperature: 0.85,
+
       maxTokens: 6144,
+
       onToken: (token, full) => {
+
         rawText = full;
+
         if (onToken) onToken(token, full);
+
       }
+
     });
 
-    return this._parseChapter(rawText, node);
+
+
+    return this._parseChapter(rawText);
+
   }
 
-  _parseChapter(text, outlineNode) {
+  _parseChapter(text) {
+
     if (!text || !text.trim()) {
-      return {
-        content: '（生成内容为空，请重试）',
-        choices: outlineNode?.choices || [{
-          id: 'continue',
-          text: '继续故事发展',
-          nextNodeId: outlineNode?.id
-        }]
-      };
+
+      return { content: '（生成内容为空，请重试）' };
+
     }
 
-    // Split content and choices
-    const choiceMarker = '---CHOICES---';
-    const idx = text.indexOf(choiceMarker);
-    let content = text;
-    let choices = [];
 
-    if (idx !== -1) {
-      content = text.slice(0, idx).trim();
-      const choiceSection = text.slice(idx + choiceMarker.length).trim();
-      choices = this._parseChoices(choiceSection);
-    } else {
-      // Try to find choices near the end
-      const lines = text.split('\n');
-      let choiceStart = -1;
-      for (let i = lines.length - 1; i >= Math.max(0, lines.length - 20); i--) {
-        const lt = lines[i].trim();
-        if (lt.startsWith('[选项') || lt.startsWith('选项') ||
-            /^[A-C][\.\)）]/.test(lt)) {
-          choiceStart = i;
-          break;
-        }
-      }
-      if (choiceStart > 0 && choiceStart < lines.length) {
-        content = lines.slice(0, choiceStart).join('\n').trim();
-        choices = this._parseChoices(lines.slice(choiceStart).join('\n'));
-      }
-    }
 
-    // If outline node has choices but AI didn't generate any, use outline's
-    if (choices.length === 0 && outlineNode?.choices?.length) {
-      choices = outlineNode.choices.map(c => ({
-        id: c.id,
-        text: c.text,
-        nextNodeId: c.nextNodeId
-      }));
-    }
-    // Otherwise leave choices empty → UI shows simple "下一章" button
+    return { content: text.trim() };
 
-    return { content, choices };
   }
 
-  _parseChoices(text) {
-    const choices = [];
-    const lines = text.split('\n');
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      // Try bracket format: [选项A] description
-      let bracketMatch = trimmed.match(/^\[选项([A-C])\]\s*(.+)/);
-      if (bracketMatch) {
-        choices.push({
-          id: `choice_${choices.length}`,
-          text: bracketMatch[2],
-          nextNodeId: null
-        });
-        continue;
-      }
-
-      // Try label format: 选项 A: description
-      let labelMatch = trimmed.match(/^选项\s*([A-C])[:：]\s*(.+)/);
-      if (labelMatch) {
-        choices.push({
-          id: `choice_${choices.length}`,
-          text: labelMatch[2],
-          nextNodeId: null
-        });
-        continue;
-      }
-
-      // Try loose format: A) description or A. description
-      let looseMatch = trimmed.match(/^([A-C])[\.\)）]\s*(.+)/);
-      if (looseMatch) {
-        choices.push({
-          id: `choice_${choices.length}`,
-          text: looseMatch[2],
-          nextNodeId: null
-        });
-      }
-    }
-
-    return choices;
-  }
-
-  /**
-   * Generate chapter summary
-   */
-  async generateSummary(chapterContent, onToken = null) {
-    const systemPrompt = `你是一个专业的小说编辑。请用 150-250 字总结以下章节的关键情节、人物发展和重要转折。只输出总结文本。`;
-    const userPrompt = `请总结以下章节：
-
-${chapterContent.slice(-3000)}
-
-请用中文输出总结（150-250字）：`;
-
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ];
-
-    let summary = '';
-    await this.api.streamChat(messages, {
-      temperature: 0.3,
-      maxTokens: 500,
-      onToken: (token, full) => {
-        summary = full;
-        if (onToken) onToken(token, full);
-      }
-    });
-
-    return summary.trim();
-  }
-
-  /**
-   * Dynamic outline rewrite after a choice
-   */
-  async rewriteOutline(bible, currentOutline, choiceNodeId, choiceText, novel, onToken = null) {
-    const bibleSummary = this._summarizeBible(bible);
-    const remainingNodes = currentOutline.nodes
-      .filter(n => n.id !== 'node_1' && !currentOutline.nodes.slice(0, currentOutline.nodes.findIndex(n2 => n2.id === choiceNodeId)).includes(n))
-      .map(n => `- ${n.id}: ${n.title} - ${n.summary}`)
-      .join('\n');
-
-    const systemPrompt = `你是一个小说大纲设计师。根据读者的选择，重新调整故事大纲的后续节点。
-请以 JSON 格式输出调整后的大纲节点（仅输出后续节点部分）：
-
-{
-  "nodes": [
-    {
-      "id": "节点ID",
-      "title": "节点标题",
-      "summary": "概要",
-      "choices": [{"id": "...", "text": "...", "nextNodeId": "..."}],
-      "isEnding": false
-    }
-  ]
-}
-
-保持原有节点数量（约 ${currentOutline.nodes.length} 个），直接输出 JSON。`;
-
-    const userPrompt = `世界观：${bibleSummary}
-小说：${novel.title}
-读者选择：${choiceText}
-当前大纲后续节点：${remainingNodes || '（全部重新规划）'}
-
-请调整大纲，直接输出 JSON。`;
-
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ];
-
-    let rawText = '';
-    await this.api.streamChat(messages, {
-      temperature: 0.8,
-      maxTokens: 4096,
-      onToken: (token, full) => {
-        rawText = full;
-        if (onToken) onToken(token, full);
-      }
-    });
-
-    const parsed = this._parseOutlineJSON(rawText);
-    // Merge: keep nodes up to choiceNodeId, replace remaining
-    const choiceIdx = currentOutline.nodes.findIndex(n => n.id === choiceNodeId);
-    const newNodes = [
-      ...currentOutline.nodes.slice(0, choiceIdx + 1),
-      ...(parsed.nodes || [])
-    ];
-    return { nodes: newNodes };
-  }
 }
 
 // ==================== UI MANAGER ====================
 class UIManager {
   constructor() {
     this.currentView = 'splash';
+
     this.currentNovelId = null;
-    this.sidebarOpen = false;
+
     this.isGenerating = false;
     this.fontSize = 18;
     this.lineHeight = 2.0;
@@ -995,29 +1025,37 @@ class UIManager {
 
   // --- Reader ---
   showReader(novel, chapter) {
+
     document.getElementById('reader-novel-title').textContent = novel.title || '未命名';
+
     document.getElementById('reader-chapter-num').textContent = `第 ${chapter?.chapterNumber || 1} 章`;
+
     document.getElementById('chapter-title').textContent = chapter?.title || '';
 
+
+
     const body = document.getElementById('chapter-body');
+
     if (chapter?.content) {
+
       body.innerHTML = this._formatChapterContent(chapter.content);
+
     } else {
+
       body.innerHTML = '<p class="text-muted">准备生成章节...</p>';
+
     }
 
-    // 清空选择区，等展示时再填
+
+
+    // 清空底部操作区，等展示时再填
+
     document.getElementById('reader-choices').innerHTML = '';
+
     document.getElementById('nav-reader-tab').style.display = '';
+
     document.getElementById('reader-main').scrollTop = 0;
 
-    // 桌面端默认显示侧栏，移动端默认隐藏（通过 toggle 展开）
-    this.sidebarOpen = window.innerWidth > 900;
-    this._updateSidebarVisibility();
-    // 确保桌面端侧栏不被其他样式或之前的 display:none 盖住
-    if (window.innerWidth > 900) {
-      document.getElementById('reader-sidebar').style.removeProperty('display');
-    }
   }
 
   _formatChapterContent(content) {
@@ -1065,79 +1103,138 @@ class UIManager {
     }
   }
 
-  showChoices(choices, chapterNum, outlineNode) {
+  showReaderBottom(chapterNum, isEnding) {
+
     const container = document.getElementById('reader-choices');
 
-    // 只有大纲节点确实有选择点时，才展示 AVG 式分支选择
-    const hasRealChoices = choices && choices.length > 0 &&
-      outlineNode?.choices?.length > 0 &&
-      !outlineNode?.isEnding;
+    if (isEnding) {
 
-    // 没有选择点 → 安安静静一个"下一章"按钮
-    if (!hasRealChoices) {
-      const isEnding = outlineNode?.isEnding;
-      container.innerHTML = isEnding ? `
-        <div class="choices-ending">
-          <p class="text-muted" style="text-align:center;margin-bottom:12px">—— 本卷终 ——</p>
+      container.innerHTML = `
+
+        <div style="text-align:center;padding:10px 0">
+
+          <p class="text-muted" style="margin-bottom:12px">—— 本卷终 ——</p>
+
         </div>
-      ` : `
-        <button class="next-chapter-btn" data-action="next-chapter">
-          <span class="choice-label">→</span> 阅读下一章
-        </button>
+
       `;
-      return;
+
+    } else {
+
+      container.innerHTML = `
+
+        <button class="next-chapter-btn" data-action="next-chapter" data-chapter="${chapterNum}">
+
+          → 生成下一章
+
+        </button>
+
+      `;
+
     }
 
-    const choiceHTML = choices.map((c, i) => `
-      <button class="choice-btn" data-choice-id="${c.id}">
-        <span class="choice-label">${String.fromCharCode(9312 + i)}</span> ${this._escape(c.text)}
-      </button>
-    `).join('');
+  }
 
-    container.innerHTML = `
-      <h4>📌 接下来的走向是：</h4>
-      ${choiceHTML}
-      <div class="choice-custom">
-        <input type="text" id="custom-choice-input" placeholder="或输入你想看到的发展...">
-        <button id="btn-custom-choice">✏️ 自定义</button>
+
+
+  showBranchMenu(chapterNum, x, y) {
+
+    const menu = document.getElementById('branch-context-menu');
+
+    menu.innerHTML = `
+
+      <div class="branch-menu-item" data-action="fork" data-chapter="${chapterNum}">
+
+        从此处签出新分支...
+
       </div>
+
     `;
+
+    menu.style.left = `${x}px`;
+
+    menu.style.top = `${y}px`;
+
+    menu.classList.remove('hidden');
+
+  }
+
+
+
+  hideBranchMenu() {
+
+    document.getElementById('branch-context-menu').classList.add('hidden');
+
   }
 
   updateOutlineProgress(outline, currentChapterNum, chapters = []) {
+
     const container = document.getElementById('outline-progress');
+
     if (!outline?.nodes?.length) {
+
       container.innerHTML = '<p class="text-muted" style="font-size:0.8rem">暂无大纲数据</p>';
+
       return;
+
     }
+
+
 
     // 只显示有对应章节的节点（已生成缓存的）
+
     const generatedChapters = chapters?.filter(c => c?.content) || [];
+
     const generatedNums = new Set(generatedChapters.map(c => c.chapterNumber));
 
+
+
     container.innerHTML = outline.nodes.map((node, i) => {
+
       const chNum = i + 1;
+
       const exists = generatedNums.has(chNum);
+
       if (!exists) return ''; // 未生成的不渲染
 
+
+
       let cls = 'clickable';
+
       if (chNum < currentChapterNum) cls += ' done';
+
       else if (chNum === currentChapterNum) cls += ' current';
 
+
+
       // 第一个节点默认作为"序章"显示章节号
+
       const label = node.title || `第 ${chNum} 章`;
+
       return `
-        <div class="outline-node ${cls}" data-chapter="${chNum}">
+
+        <div class="outline-node ${cls}" data-chapter="${chNum}" data-fork="true">
+
           <div class="node-dot"></div>
+
           <div class="node-title">${label}</div>
+
         </div>
+
       `;
+
     }).filter(Boolean).join('');
 
+
+
     // 如果一个已生成节点都没有
+
     if (container.innerHTML.trim() === '') {
+
       container.innerHTML = '<p class="text-muted" style="font-size:0.8rem">暂无已生成的章节</p>';
+
     }
+
   }
 
   updateCharacterList(bible) {
@@ -1184,19 +1281,15 @@ class UIManager {
   }
 
   toggleSidebar() {
-    this.sidebarOpen = !this.sidebarOpen;
-    this._updateSidebarVisibility();
-  }
 
-  _updateSidebarVisibility() {
     const sidebar = document.getElementById('reader-sidebar');
+
     const overlay = document.getElementById('sidebar-overlay');
-    if (window.innerWidth <= 900) {
-      sidebar.classList.toggle('open', this.sidebarOpen);
-      overlay.classList.toggle('hidden', !this.sidebarOpen);
-    } else {
-      sidebar.style.display = this.sidebarOpen ? '' : 'none';
-    }
+
+    sidebar.classList.toggle('open');
+
+    overlay.classList.toggle('hidden', !sidebar.classList.contains('open'));
+
   }
 
   applyReadingPrefs() {
@@ -1215,13 +1308,23 @@ class App {
     this.ui = new UIManager();
 
     // Current novel context
+
     this.currentNovel = null;
+
     this.currentBible = null;
+
     this.currentOutline = null;
+
     this.currentChapters = [];
+
     this.currentChapterNum = 1;
 
+    this.currentBranchId = 'main';
+
+
+
     // Generation state
+
     this.isGenerating = false;
   }
 
@@ -1296,12 +1399,32 @@ class App {
     });
 
     // Reader
+
     document.getElementById('btn-reader-back').addEventListener('click', () => this._navigateToLibrary());
+
     document.getElementById('btn-toggle-sidebar').addEventListener('click', () => this.ui.toggleSidebar());
-    document.getElementById('reader-choices').addEventListener('click', (e) => this._onChoicesClick(e));
+
+    document.getElementById('reader-choices').addEventListener('click', (e) => this._onReaderBottomClick(e));
+
     document.getElementById('sidebar-overlay').addEventListener('click', () => this.ui.toggleSidebar());
+
     document.getElementById('btn-download-book').addEventListener('click', () => this._onDownloadBook());
+
     document.getElementById('outline-progress').addEventListener('click', (e) => this._onOutlineNodeClick(e));
+
+    document.getElementById('outline-progress').addEventListener('contextmenu', (e) => this._onSidebarContextMenu(e));
+
+    // Close branch context menu on click outside
+
+    document.addEventListener('click', (e) => {
+
+      if (!e.target.closest('#branch-context-menu')) {
+
+        this.ui.hideBranchMenu();
+
+      }
+
+    });
 
     // Settings
     document.getElementById('btn-toggle-api-key').addEventListener('click', () => {
@@ -1338,10 +1461,76 @@ class App {
       tag.addEventListener('click', () => tag.classList.toggle('active'));
     });
 
+    // Branch context menu click handler
+
+    document.getElementById('branch-context-menu').addEventListener('click', (e) => {
+
+      const item = e.target.closest('.branch-menu-item');
+
+      if (!item || item.dataset.action !== 'fork') return;
+
+
+
+      const chapterNum = parseInt(item.dataset.chapter);
+
+      if (!chapterNum || isNaN(chapterNum)) return;
+
+
+
+      this.ui.hideBranchMenu();
+
+
+
+      // Show the branch prompt overlay
+
+      const overlay = document.getElementById('branch-prompt-overlay');
+
+      overlay.classList.remove('hidden');
+
+      document.getElementById('branch-prompt-input').value = '';
+
+      document.getElementById('branch-prompt-input').focus();
+
+      document.getElementById('branch-prompt-chapter').textContent = `第 ${chapterNum} 章`;
+
+      document.getElementById('branch-prompt-submit').dataset.chapter = chapterNum;
+
+    });
+
+
+
+    // Branch prompt overlay buttons
+
+    document.getElementById('branch-prompt-cancel').addEventListener('click', () => {
+
+      document.getElementById('branch-prompt-overlay').classList.add('hidden');
+
+    });
+
+    document.getElementById('branch-prompt-submit').addEventListener('click', async (e) => {
+
+      const chapterNum = parseInt(e.target.dataset.chapter);
+
+      if (chapterNum) {
+
+        document.getElementById('branch-prompt-overlay').classList.add('hidden');
+
+        await this._onBranchSubmit(chapterNum);
+
+      }
+
+    });
+
+
+
     // Window resize
+
     window.addEventListener('resize', () => this._handleResize());
 
+
+
     // Expose for inline handlers
+
     window._app = this;
   }
 
@@ -1730,54 +1919,122 @@ class App {
     outline.novelId = novel.id;
     await this.storage.saveOutline(outline);
 
+    // Create 'main' branch
+
+    const mainBranch = {
+
+      id: novel.id + '_main',
+
+      novelId: novel.id,
+
+      parentBranchId: null,
+
+      forkChapter: 0,
+
+      forkPrompt: '主分支',
+
+      createdAt: Date.now()
+
+    };
+
+    await this.storage.saveBranch(mainBranch);
+
+
+
     // Set current context
+
     this.currentNovel = novel;
+
     this.currentBible = bible;
+
     this.currentOutline = outline;
+
     this.currentChapters = [];
+
     this.currentChapterNum = 1;
 
+    this.currentBranchId = 'main';
+
+
+
     // Navigate to reader and generate chapter 1
+
     this._navigateToReader();
+
     this._updateReaderSidebar();
-    await this._generateChapter(1, outline.nodes[0]?.id || 'node_1', null);
+
+    await this._generateChapter(1, outline.nodes[0]?.id || 'node_1');
   }
 
   // --- Reader Flow ---
   async _loadNovelForReading(novelId) {
+
     const novel = await this.storage.getNovel(novelId);
+
     if (!novel) {
+
       this.ui.toast('小说不存在', 'error');
+
       return;
+
     }
+
+
 
     const bible = await this.storage.getBible(novelId);
+
     const outline = await this.storage.getOutline(novelId);
-    const chapters = await this.storage.getChapters(novelId);
+
+    const chapters = await this.storage.getChaptersByBranch(novelId, this.currentBranchId);
+
+
 
     this.currentNovel = novel;
+
     this.currentBible = bible;
+
     this.currentOutline = outline;
+
     this.currentChapters = chapters;
+
     this.currentChapterNum = novel.lastReadChapter || 1;
 
+
+
     this._navigateToReader();
+
     this._updateReaderSidebar();
 
+
+
     // Load the last read chapter
+
     const chapter = chapters.find(c => c.chapterNumber === this.currentChapterNum);
+
     if (chapter) {
+
       this.ui.showReader(novel, chapter);
-      const outlineNode = this.currentOutline?.nodes?.[this.currentChapterNum - 1] || null;
-      this.ui.showChoices(chapter.choices, this.currentChapterNum, outlineNode);
+
+      const isEnding = this.currentOutline?.nodes?.[this.currentChapterNum - 1]?.isEnding || false;
+
+      this.ui.showReaderBottom(this.currentChapterNum, isEnding);
+
     } else {
+
       this.ui.showReader(novel, { chapterNumber: this.currentChapterNum });
+
       // Auto-generate if not exists
+
       const nodeId = outline?.nodes?.[this.currentChapterNum - 1]?.id;
+
       if (nodeId) {
-        await this._generateChapter(this.currentChapterNum, nodeId, null);
+
+        await this._generateChapter(this.currentChapterNum, nodeId);
+
       }
+
     }
+
   }
 
   _updateReaderSidebar() {
@@ -1786,208 +2043,291 @@ class App {
     this.ui.updateWorldRules(this.currentBible);
   }
 
-  async _generateChapter(chapterNum, nodeId, choiceText) {
+  async _generateChapter(chapterNum, nodeId) {
+
     if (this.isGenerating) return;
     this.isGenerating = true;
 
-    // === LAZY CACHE CHECK ===
-    // Only use cache when re-opening a novel (no choice/direction given)
-    // When reader makes a choice, always regenerate to reflect that choice
-    if (!choiceText && this.currentNovel) {
-      const existing = await this.storage.getChapter(this.currentNovel.id, chapterNum);
+    // === CACHE CHECK ===
+
+    if (this.currentNovel) {
+
+      const chapters = await this.storage.getChaptersByBranch(this.currentNovel.id, this.currentBranchId);
+
+      const existing = chapters.find(c => c.chapterNumber === chapterNum);
+
       if (existing && existing.content) {
+
+        // Update local chapters array
+
+        this.currentChapters = chapters;
+
         this.ui.showReader(this.currentNovel, existing);
-        const outlineNode = this.currentOutline?.nodes?.[chapterNum - 1] || null;
-        this.ui.showChoices(existing.choices, chapterNum, outlineNode);
+
+        const isEnding = this.currentOutline?.nodes?.[chapterNum - 1]?.isEnding || false;
+
+        this.ui.showReaderBottom(chapterNum, isEnding);
+
         this.ui.showTypingIndicator(false);
+
         this.currentChapterNum = chapterNum;
+
         this._updateReaderSidebar();
+
         this.isGenerating = false;
+
         return;
+
       }
+
     }
+
+
 
     // Find previous chapter summary
+
     let previousSummary = '';
+
     let previousChapterFull = '';
 
+
+
     if (chapterNum > 1) {
+
       const prevChapter = this.currentChapters.find(c => c.chapterNumber === chapterNum - 1);
+
       if (prevChapter) {
+
         previousSummary = prevChapter.summary || '';
+
         previousChapterFull = prevChapter.content || '';
+
       }
+
     }
 
+
+
     // Update UI
+
     const chapterTitle = this.currentOutline?.nodes?.find(n => n.id === nodeId)?.title || `第 ${chapterNum} 章`;
+
     document.getElementById('reader-chapter-num').textContent = `第 ${chapterNum} 章`;
+
     document.getElementById('chapter-title').textContent = chapterTitle;
+
     document.getElementById('chapter-body').innerHTML = '<p class="text-muted">AI 正在构思...</p>';
+
     document.getElementById('reader-choices').innerHTML = '';
+
     this.ui.showTypingIndicator(true);
+
     this._updateReaderSidebar();
 
+
+
     try {
+
       const result = await this.engine.generateChapter(
+
         this.currentBible,
+
         this.currentOutline,
+
         this.currentNovel,
+
         chapterNum,
+
         nodeId,
-        choiceText,
+
         previousSummary,
+
         previousChapterFull,
+
         (token, full) => {
+
           // Remove "preparing" text on first token
+
           this.ui.appendChapterToken(token);
+
         }
+
       );
+
+
 
       this.ui.showTypingIndicator(false);
 
-      // Generate summary
-      let summary = '';
-      try {
-        summary = await this.engine.generateSummary(result.content);
-      } catch (e) {
-        console.warn('Summary generation failed:', e);
-      }
+
 
       // Build chapter object
+
       const chapter = {
-        id: `${this.currentNovel.id}_ch_${chapterNum}`,
+
+        id: `${this.currentNovel.id}_${this.currentBranchId}_ch_${chapterNum}`,
+
         novelId: this.currentNovel.id,
+
+        branchId: this.currentBranchId,
+
         chapterNumber: chapterNum,
+
         title: chapterTitle,
+
         content: result.content,
-        summary: summary,
-        choices: result.choices,
-        readerChoice: choiceText || null
+
+        summary: ''
+
       };
+
+
 
       await this.storage.saveChapter(chapter);
 
-      // Update current chapters list
+
+
+      // Update local chapters
+
       const existingIdx = this.currentChapters.findIndex(c => c.chapterNumber === chapterNum);
+
       if (existingIdx >= 0) {
+
         this.currentChapters[existingIdx] = chapter;
+
       } else {
+
         this.currentChapters.push(chapter);
+
         this.currentChapters.sort((a, b) => a.chapterNumber - b.chapterNumber);
+
       }
+
+
 
       // Update novel progress
+
       this.currentNovel.lastReadChapter = chapterNum;
+
       this.currentNovel.totalChapters = Math.max(
+
         this.currentNovel.totalChapters || 0,
+
         this.currentOutline?.nodes?.length || chapterNum
+
       );
+
       await this.storage.saveNovel(this.currentNovel);
 
+
+
       // Update UI
+
       document.getElementById('chapter-title').textContent = chapterTitle;
+
       const genNode = this.currentOutline?.nodes?.find(n => n.id === nodeId) || null;
-      this.ui.showChoices(result.choices, chapterNum, genNode);
+
+      const isEnding = genNode?.isEnding || false;
+
+      this.ui.showReaderBottom(chapterNum, isEnding);
+
       this._updateReaderSidebar();
 
+
+
       // Handle ending
-      if (genNode?.isEnding) {
+
+      if (isEnding) {
+
         setTimeout(() => {
+
           this.ui.toast('🎉 故事完结！感谢阅读', 'success');
+
         }, 500);
+
       }
+
+
 
     } catch (e) {
+
       console.error('Chapter generation failed:', e);
+
       this.ui.showTypingIndicator(false);
+
       document.getElementById('chapter-body').innerHTML = `<p class="text-muted">生成失败: ${this.ui._escape(e.message)}</p>`;
+
       this.ui.toast(`生成失败: ${e.message}`, 'error');
+
     } finally {
+
       this.isGenerating = false;
+
     }
+
   }
 
-  async _onChoicesClick(e) {
+  _onReaderBottomClick(e) {
     if (this.isGenerating) return;
 
-    // 自定义输入提交
-    if (e.target.id === 'btn-custom-choice') {
-      const input = document.getElementById('custom-choice-input');
-      const text = input?.value?.trim();
-      if (!text) return;
-      const nextNodeId = this.currentOutline?.nodes?.[this.currentChapterNum]?.id ||
-                         this.currentOutline?.nodes?.[this.currentChapterNum - 1]?.id ||
-                         'continue';
-      this.currentChapterNum++;
-      await this._generateChapter(this.currentChapterNum, nextNodeId, `读者要求：${text}`);
-      return;
-    }
-
-    // 分支选项/下一章按钮 — 用 matches 兜底查 target 和 parent
-    const target = e.target;
-    let btn = null;
-    if (target.matches?.('.choice-btn, .next-chapter-btn')) {
-      btn = target;
-    } else if (target.parentElement?.matches?.('.choice-btn, .next-chapter-btn')) {
-      btn = target.parentElement;
-    } else {
-      btn = target.closest('.choice-btn, .next-chapter-btn');
-    }
+    const btn = e.target.closest('.next-chapter-btn');
     if (!btn) return;
 
-    // "阅读下一章" — 无选择，直接继续
-    if (btn.dataset.action === 'next-chapter') {
-      const nextNodeId = this.currentOutline?.nodes?.[this.currentChapterNum]?.id;
-      if (!nextNodeId) {
-        this.ui.toast('大纲已到尽头', 'info');
-        return;
-      }
-      this.currentChapterNum++;
-      await this._generateChapter(this.currentChapterNum, nextNodeId, null);
+    const nextNodeId = this.currentOutline?.nodes?.[this.currentChapterNum]?.id;
+    if (!nextNodeId) {
+      this.ui.toast('\u5927\u7eb2\u5df2\u5230\u5c3d\u5934', 'info');
       return;
     }
-
-    // 分支选择
-    const choiceId = btn.dataset.choiceId;
-    // 从按钮文本提取选择描述（去掉前面的标记字符）
-    const choiceText = btn.textContent?.replace(/^[①②③]\s*/, '').trim() || '';
-
-    // 动态重写后续大纲
-    const currentNode = this.currentOutline?.nodes?.[this.currentChapterNum - 1];
-    if (choiceText && this.currentOutline?.nodes?.length) {
-      try {
-        const newOutline = await this.engine.rewriteOutline(
-          this.currentBible,
-          this.currentOutline,
-          currentNode?.id,
-          choiceText,
-          this.currentNovel
-        );
-        this.currentOutline = newOutline;
-        await this.storage.saveOutline({ novelId: this.currentNovel.id, ...newOutline });
-        this._updateReaderSidebar();
-      } catch (e) {
-        console.warn('Outline rewrite failed:', e);
-      }
-    }
-
-    // 确定下一节点
-    let nextNodeId;
-    if (currentNode?.choices) {
-      const matched = currentNode.choices.find(c => c.id === choiceId);
-      if (matched?.nextNodeId) nextNodeId = matched.nextNodeId;
-    }
-    if (!nextNodeId) {
-      nextNodeId = this.currentOutline?.nodes?.[this.currentChapterNum]?.id;
-    }
-    if (!nextNodeId) {
-      this.ui.toast('大纲已到尽头', 'info');
-      return;
-    }
-
     this.currentChapterNum++;
-    await this._generateChapter(this.currentChapterNum, nextNodeId, choiceText);
+    this._generateChapter(this.currentChapterNum, nextNodeId);
+  }
+
+  _onSidebarContextMenu(e) {
+    const nodeEl = e.target.closest('.outline-node.clickable');
+    if (!nodeEl) return;
+
+    e.preventDefault();
+    const chapterNum = parseInt(nodeEl.dataset.chapter);
+    if (!chapterNum || isNaN(chapterNum)) return;
+
+    // Only show fork menu on chapters that have been generated
+    const chapter = this.currentChapters.find(c => c.chapterNumber === chapterNum);
+    if (!chapter || !chapter.content) return;
+
+    this.ui.showBranchMenu(chapterNum, e.clientX, e.clientY);
+  }
+
+  async _onBranchSubmit(chapterNum) {
+    const prompt = document.getElementById('branch-prompt-input')?.value?.trim();
+    if (!prompt) {
+      this.ui.toast('\u8bf7\u8f93\u5165\u5206\u652f\u63d0\u793a\u8bcd', 'warning');
+      return;
+    }
+
+    // Create new branch
+    const branchId = `${this.currentNovel.id}_branch_${Date.now()}`;
+    const branch = {
+      id: branchId,
+      novelId: this.currentNovel.id,
+      parentBranchId: this.currentBranchId,
+      forkChapter: chapterNum,
+      forkPrompt: prompt,
+      createdAt: Date.now()
+    };
+    await this.storage.saveBranch(branch);
+
+    // Switch to new branch
+    this.currentBranchId = branchId;
+    this.currentChapterNum = chapterNum;
+    this.currentChapters = await this.storage.getChaptersByBranch(this.currentNovel.id, branchId);
+
+    // Generate next chapter in the new branch
+    const nextNodeId = this.currentOutline?.nodes?.[chapterNum]?.id;
+    if (nextNodeId) {
+      await this._generateChapter(chapterNum + 1, nextNodeId);
+    }
+
+    this.ui.toast(`已签出新分支「${prompt.slice(0, 20)}${prompt.length > 20 ? '...' : ''}」`, 'success');
+    this._updateReaderSidebar();
   }
 
   async _onDownloadBook() {
@@ -2021,12 +2361,11 @@ class App {
           id: n.id, title: n.title, summary: n.summary
         }))
       } : null,
-      chapters: chapters.sort((a, b) => a.chapterNumber - b.chapterNumber).map(c => ({
-        chapterNumber: c.chapterNumber,
-        title: c.title,
-        content: c.content,
-        summary: c.summary,
-        choices: c.choices
+      chapters: chapters.sort((a, b) => a.chapterNumber - b.chapterNumber).map(c => ({
+        chapterNumber: c.chapterNumber,
+        title: c.title,
+        content: c.content,
+        summary: c.summary
       }))
     };
 
@@ -2075,25 +2414,41 @@ class App {
     }
 
     // 跳转到已缓存的章节
+
     this.currentChapterNum = chapterNum;
+
     this.ui.showReader(this.currentNovel, chapter);
+
+    const isEnding = this.currentOutline?.nodes?.[chapterNum - 1]?.isEnding || false;
+
+    this.ui.showReaderBottom(chapterNum, isEnding);
+
     this._updateReaderSidebar();
 
-    // 显示该章节已有的选择（如果有的话）
-    const outlineNode = this.currentOutline?.nodes?.[chapterNum - 1] || null;
-    this.ui.showChoices(chapter.choices, chapterNum, outlineNode);
   }
+
+
 
   // --- Helpers ---
+
   _generateId() {
+
     return 'novel_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+
   }
 
+
+
   _handleResize() {
+
     if (this.currentView === 'reader' && window.innerWidth > 900) {
-      document.getElementById('reader-sidebar').style.display = this.ui.sidebarOpen ? '' : 'none';
+
+      document.getElementById('reader-sidebar').style.display = '';
+
       document.getElementById('sidebar-overlay').classList.add('hidden');
+
     }
+
   }
 }
 

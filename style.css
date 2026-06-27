@@ -728,104 +728,66 @@ input[type="range"]::-webkit-slider-thumb {
   30% { opacity: 1; }
 }
 
-/* Reader Choices */
-.reader-choices {
-  padding: 20px 24px;
-  background: var(--bg-surface);
-  border-top: 1px solid var(--border-subtle);
-  max-width: var(--reader-max-width);
-  margin: 0 auto;
-  width: 100%;
-}
-.reader-choices h4 {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  margin-bottom: 12px;
-  font-weight: 500;
-}
-.choice-btn {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 12px 16px;
-  margin-bottom: 8px;
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  font-family: var(--font-sans);
-}
-.choice-btn:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  transform: translateX(4px);
-}
-.choice-btn .choice-label {
-  font-weight: 600;
-  color: var(--accent-glow);
-  margin-right: 8px;
-}
-.choice-custom {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-}
-.choice-custom input {
-  flex: 1;
-  padding: 10px 14px;
-  background: var(--bg-deep);
-  color: var(--text-primary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  font-size: 0.9rem;
-  font-family: var(--font-sans);
-  outline: none;
-}
-.choice-custom input:focus { border-color: var(--accent); }
-.choice-custom input::placeholder { color: var(--text-muted); }
-.choice-custom button {
-  padding: 10px 16px;
-  background: var(--accent);
-  color: white;
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  font-size: 0.9rem;
-  white-space: nowrap;
-  font-family: var(--font-sans);
-}
-.choice-custom button:hover { background: var(--accent-glow); }
+/* Reader Bottom */
 
-/* "下一章" 简单按钮（非分支选择时） */
-.next-chapter-btn {
-  display: block;
-  width: 100%;
-  max-width: 280px;
+.reader-choices {
+
+  padding: 20px 24px;
+
+  background: var(--bg-surface);
+
+  border-top: 1px solid var(--border-subtle);
+
+  max-width: var(--reader-max-width);
+
   margin: 0 auto;
+
+  width: 100%;
+
+}
+
+
+
+.next-chapter-btn {
+
+  display: block;
+
+  width: 100%;
+
+  max-width: 280px;
+
+  margin: 0 auto;
+
   padding: 14px 24px;
+
   text-align: center;
+
   background: var(--accent);
+
   color: white;
+
   border: none;
+
   border-radius: var(--radius-md);
+
   font-size: 1rem;
+
   cursor: pointer;
+
   transition: all var(--transition-fast);
+
   font-family: var(--font-sans);
+
 }
+
 .next-chapter-btn:hover {
+
   background: var(--accent-glow);
+
   transform: translateY(-1px);
+
   box-shadow: 0 4px 20px rgba(37, 99, 235, 0.3);
-}
-.next-chapter-btn .choice-label {
-  margin-right: 6px;
-}
-.choices-ending {
-  padding: 10px 0;
+
 }
 
 /* Reader Sidebar */
@@ -904,10 +866,68 @@ input[type="range"]::-webkit-slider-thumb {
   background: rgba(34, 197, 94, 0.08);
 }
 
-.outline-node .node-title {
-  word-break: break-word;
-}
-
+.outline-node .node-title {
+  word-break: break-word;
+}
+
+.outline-node[data-fork="true"] {
+  cursor: context-menu;
+}
+
+/* Branch Context Menu */
+#branch-context-menu {
+  position: fixed;
+  z-index: 200;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 6px 0;
+  min-width: 180px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.branch-menu-item {
+  padding: 10px 16px;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  user-select: none;
+}
+.branch-menu-item:hover {
+  background: var(--accent-soft);
+  color: var(--accent-glow);
+}
+
+/* Branch Prompt Overlay */
+#branch-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.branch-prompt-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 28px;
+  width: 90%;
+  max-width: 440px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.branch-prompt-card h4 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+.branch-prompt-card #branch-prompt-chapter {
+  color: var(--gold);
+}
+
 /* Character list */
 .character-list {
   display: flex;
