@@ -1600,15 +1600,27 @@ class App {
 
     document.getElementById('branch-prompt-submit').addEventListener('click', async (e) => {
 
-
-
       const chapterNum = parseInt(e.currentTarget.dataset.chapter);
 
-      if (chapterNum) {
+      if (!chapterNum || isNaN(chapterNum)) {
 
-        document.getElementById('branch-prompt-overlay').classList.add('hidden');
+        this.ui.toast('无法签出：章节号无效', 'error');
+
+        return;
+
+      }
+
+      document.getElementById('branch-prompt-overlay').classList.add('hidden');
+
+      try {
 
         await this._onBranchSubmit(chapterNum);
+
+      } catch (err) {
+
+        console.error('Branch submit failed:', err);
+
+        this.ui.toast(`签出失败: ${err.message}`, 'error');
 
       }
 
@@ -2501,6 +2513,8 @@ class App {
 
   async _onBranchSubmit(chapterNum) {
 
+    try {
+
     const prompt = document.getElementById('branch-prompt-input')?.value?.trim();
 
     if (!prompt) {
@@ -2595,9 +2609,13 @@ class App {
 
     this.ui.toast(`已签出新分支「${prompt.slice(0, 20)}${prompt.length > 20 ? '...' : ''}」`, 'success');
 
-    this.ui.hideModal();
+    } catch (e) {
 
+      console.error('Branch creation failed:', e);
 
+      this.ui.toast(`签出失败: ${e.message}`, 'error');
+
+    }
 
   }
 
