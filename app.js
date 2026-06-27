@@ -1392,51 +1392,62 @@ class UIManager {
   }
 
   initCustomDropdowns() {
-    // Replace <datalist> with styled custom dropdowns
-    document.querySelectorAll('input[list]').forEach(input => {
-      const listId = input.getAttribute('list');
-      const datalist = document.getElementById(listId);
-      if (!datalist) return;
+    try {
+      document.querySelectorAll('input[list]').forEach(input => {
+        const listId = input.getAttribute('list');
+        const datalist = document.getElementById(listId);
+        if (!datalist) return;
 
-      // Get options from datalist
-      const options = Array.from(datalist.querySelectorAll('option')).map(o => o.value);
-      if (options.length === 0) return;
+        const options = Array.from(datalist.querySelectorAll('option')).map(o => o.value).filter(Boolean);
+        if (options.length === 0) return;
 
-      // Create the custom dropdown
-      const wrapper = document.createElement('div');
-      wrapper.style.position = 'relative';
-      wrapper.style.display = 'inline-block';
-      wrapper.style.width = '100%';
-      input.parentNode.insertBefore(wrapper, input);
-      wrapper.appendChild(input);
+        // 阻止浏览器原生白色 datalist 弹出
+        input.removeAttribute('list');
 
-      const dd = document.createElement('div');
-      dd.className = 'custom-dropdown';
-      dd.innerHTML = options.map(v => `<div class="custom-dropdown-item" data-value="${this._escape(v)}">${this._escape(v)}</div>`).join('');
-      wrapper.appendChild(dd);
-
-      // Show on focus
-      input.addEventListener('focus', () => {
-        dd.innerHTML = options.map(v => `<div class="custom-dropdown-item" data-value="${this._escape(v)}">${this._escape(v)}</div>`).join('');
-        dd.classList.add('show');
-      });
-
-      // Hide on blur (with delay to allow click on item)
-      input.addEventListener('blur', () => {
-        setTimeout(() => dd.classList.remove('show'), 200);
-      });
-
-      // Click to select
-      dd.addEventListener('mousedown', (e) => {
-        const item = e.target.closest('.custom-dropdown-item');
-        if (item) {
-          input.value = item.dataset.value;
-          dd.classList.remove('show');
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-          input.dispatchEvent(new Event('change', { bubbles: true }));
+        // 给父容器加 position:relative 以定位下拉
+        const parent = input.parentElement;
+        if (getComputedStyle(parent).position === 'static') {
+          parent.style.position = 'relative';
         }
+
+        // 创建自定义下拉容器
+        const dd = document.createElement('div');
+        dd.className = 'custom-dropdown';
+        parent.appendChild(dd);
+
+        const renderItems = (filter = '') => {
+          const filtered = options.filter(v => !filter || v.includes(filter));
+          dd.innerHTML = filtered.map(v =>
+            `<div class="custom-dropdown-item" data-value="${this._escape(v)}">${this._escape(v)}</div>`
+          ).join('');
+        };
+
+        const show = () => {
+          renderItems(input.value);
+          dd.classList.add('show');
+        };
+        const hide = () => dd.classList.remove('show');
+
+        input.addEventListener('focus', show);
+        input.addEventListener('input', () => {
+          if (dd.classList.contains('show')) renderItems(input.value);
+        });
+        input.addEventListener('blur', () => setTimeout(hide, 250));
+
+        dd.addEventListener('mousedown', (e) => {
+          e.preventDefault(); // 防止 blur 先触发
+          const item = e.target.closest('.custom-dropdown-item');
+          if (item) {
+            input.value = item.dataset.value;
+            hide();
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        });
       });
-    });
+    } catch (e) {
+      console.warn('Custom dropdown init failed:', e);
+    }
   }
 }
 
