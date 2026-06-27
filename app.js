@@ -1291,6 +1291,7 @@ class App {
     document.getElementById('btn-toggle-sidebar').addEventListener('click', () => this.ui.toggleSidebar());
     document.getElementById('reader-choices').addEventListener('click', (e) => this._onChoicesClick(e));
     document.getElementById('sidebar-overlay').addEventListener('click', () => this.ui.toggleSidebar());
+    document.getElementById('btn-download-book').addEventListener('click', () => this._onDownloadBook());
     document.getElementById('outline-progress').addEventListener('click', (e) => this._onOutlineNodeClick(e));
 
     // Settings
@@ -1969,6 +1970,73 @@ class App {
 
     this.currentChapterNum++;
     await this._generateChapter(this.currentChapterNum, nextNodeId, choiceText);
+  }
+
+  async _onDownloadBook() {
+    if (!this.currentNovel) {
+      this.ui.toast('没有可下载的书籍', 'warning');
+      return;
+    }
+
+    const novel = this.currentNovel;
+    const bible = this.currentBible;
+    const outline = this.currentOutline;
+    const chapters = this.currentChapters?.filter(c => c.content) || [];
+
+    // 组装全书数据
+    const book = {
+      title: novel.title,
+      genre: novel.genre,
+      style: novel.style,
+      tropes: novel.tropes,
+      createdAt: novel.createdAt,
+      totalChapters: chapters.length,
+      bible: bible ? {
+        worldSetting: bible.worldSetting,
+        worldRules: bible.worldRules,
+        atmosphere: bible.atmosphere,
+        factions: bible.factions,
+        characters: bible.characters
+      } : null,
+      outline: outline ? {
+        nodes: outline.nodes?.map(n => ({
+          id: n.id, title: n.title, summary: n.summary
+        }))
+      } : null,
+      chapters: chapters.sort((a, b) => a.chapterNumber - b.chapterNumber).map(c => ({
+        chapterNumber: c.chapterNumber,
+        title: c.title,
+        content: c.content,
+        summary: c.summary,
+        choices: c.choices
+      }))
+    };
+
+    // 生成文本版
+    let text = `${novel.title}\n${'═'.repeat(novel.title.length)}\n\n`;
+    text += `题材：${novel.genre || '未设定'}\n`;
+    text += `文风：${novel.style || '未设定'}\n`;
+    if (novel.tropes?.length) text += `元素：${novel.tropes.join('、')}\n`;
+    text += `章节数：${chapters.length}\n\n`;
+
+    for (const ch of book.chapters) {
+      text += `\n${'─'.repeat(40)}\n`;
+      text += `第 ${ch.chapterNumber} 章 ${ch.title || ''}\n`;
+      text += `${'─'.repeat(40)}\n\n`;
+      text += ch.content + '\n\n';
+      if (ch.summary) text += `[本章概要] ${ch.summary}\n\n`;
+    }
+
+    // 下载为 .txt
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${novel.title || '未命名'}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    this.ui.toast(`已下载《${novel.title}》共 ${chapters.length} 章 ✓`, 'success');
   }
 
   async _onOutlineNodeClick(e) {
