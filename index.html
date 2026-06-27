@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="NightRead">
+  <meta name="description" content="AI-powered interactive novel reader">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="./icon-512.png">
+  <title>Lin's NightRead</title>
+  <link rel="stylesheet" href="./style.css">
+  <!-- Marked.js for optional markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <!-- ==================== LANDING / SPLASH SCREEN ==================== -->
+  <div id="view-splash" class="view active">
+    <div class="splash-container">
+      <div class="splash-icon">
+        <svg viewBox="0 0 80 80" width="80" height="80">
+          <defs>
+            <radialGradient id="moonglow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#f0d78c"/>
+              <stop offset="70%" stop-color="#c9a84c"/>
+              <stop offset="100%" stop-color="#8b6914"/>
+            </radialGradient>
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="3" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          <circle cx="38" cy="32" r="22" fill="url(#moonglow)" filter="url(#glow)"/>
+          <circle cx="48" cy="25" r="18" fill="#0a0a0f"/>
+          <circle cx="52" cy="58" r="3" fill="#ffffff33"/>
+          <circle cx="18" cy="54" r="2" fill="#ffffff22"/>
+          <circle cx="30" cy="65" r="1.5" fill="#ffffff18"/>
+          <circle cx="62" cy="42" r="1.5" fill="#ffffff20"/>
+        </svg>
+      </div>
+      <h1 class="splash-title">Lin's NightRead</h1>
+      <p class="splash-tagline">夜深了，让 AI 为你写一个故事</p>
+      <button id="btn-splash-start" class="btn-primary btn-glow">进入书斋</button>
+    </div>
+  </div>
+
+  <!-- ==================== MAIN APP SHELL ==================== -->
+  <div id="app-shell" class="hidden">
+    <!-- Top Navigation Bar -->
+    <nav class="top-nav" id="top-nav">
+      <div class="nav-brand">
+        <svg viewBox="0 0 24 24" width="22" height="22" class="nav-logo">
+          <circle cx="10" cy="9" r="6" fill="#e2c870"/>
+          <circle cx="13" cy="6" r="5" fill="#0a0a0f"/>
+        </svg>
+        <span class="nav-title">NightRead</span>
+      </div>
+      <div class="nav-tabs" id="nav-tabs">
+        <button class="nav-tab active" data-view="library">书斋</button>
+        <button class="nav-tab" data-view="reader" id="nav-reader-tab" style="display:none">阅读</button>
+        <button class="nav-tab" data-view="settings">设置</button>
+      </div>
+    </nav>
+
+    <!-- ==================== LIBRARY VIEW ==================== -->
+    <div id="view-library" class="view">
+      <div class="library-header">
+        <h2>我的书斋</h2>
+        <button id="btn-new-novel" class="btn-primary">+ 创作新小说</button>
+      </div>
+      <div id="library-grid" class="library-grid">
+        <!-- Novel cards rendered dynamically -->
+      </div>
+      <div id="library-empty" class="library-empty hidden">
+        <div class="empty-icon">
+          <svg viewBox="0 0 64 64" width="64" height="64">
+            <rect x="12" y="8" width="40" height="50" rx="3" fill="#1a1a2e" stroke="#333" stroke-width="1"/>
+            <line x1="22" y1="18" x2="42" y2="18" stroke="#444" stroke-width="1"/>
+            <line x1="22" y1="26" x2="42" y2="26" stroke="#444" stroke-width="1"/>
+            <line x1="22" y1="34" x2="36" y2="34" stroke="#444" stroke-width="1"/>
+            <circle cx="44" cy="44" r="10" fill="#2563eb" opacity="0.8"/>
+            <text x="44" y="48" text-anchor="middle" fill="white" font-size="14" font-family="sans-serif">+</text>
+          </svg>
+        </div>
+        <p>书斋空空如也</p>
+        <p class="text-muted">点击上方按钮，开启你的第一个故事</p>
+      </div>
+    </div>
+
+    <!-- ==================== SETUP WIZARD VIEW ==================== -->
+    <div id="view-setup" class="view">
+      <div class="wizard-container">
+        <div class="wizard-progress">
+          <div class="wizard-step active" data-step="1">
+            <span class="step-number">1</span>
+            <span class="step-label">偏好设置</span>
+          </div>
+          <div class="wizard-line"></div>
+          <div class="wizard-step" data-step="2">
+            <span class="step-number">2</span>
+            <span class="step-label">生成设定</span>
+          </div>
+          <div class="wizard-line"></div>
+          <div class="wizard-step" data-step="3">
+            <span class="step-number">3</span>
+            <span class="step-label">开始阅读</span>
+          </div>
+        </div>
+
+        <!-- Step 1: Preferences -->
+        <div id="wizard-step-1" class="wizard-panel active">
+          <h3>创作偏好</h3>
+          <p class="text-muted">告诉 AI 你想读一个什么样的故事</p>
+
+          <div class="form-group">
+            <label for="novel-title-input">小说标题</label>
+            <input type="text" id="novel-title-input" class="input-dark" placeholder="为你的小说取个名字...">
+          </div>
+
+          <div class="form-group">
+            <label for="novel-genre">题材类型</label>
+            <select id="novel-genre" class="input-dark">
+              <option value="">-- 选择题材 --</option>
+              <option value="玄幻">玄幻 / 东方奇幻</option>
+              <option value="科幻">科幻 / 赛博朋克</option>
+              <option value="都市">都市 / 现代言情</option>
+              <option value="悬疑">悬疑 / 推理</option>
+              <option value="武侠">武侠 / 仙侠</option>
+              <option value="末世">末世 / 废土</option>
+              <option value="奇幻">西方奇幻 / 剑与魔法</option>
+              <option value="历史">历史 / 架空</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="novel-tropes">故事元素（可多选）</label>
+            <div class="tag-input" id="trope-tags">
+              <span class="tag" data-tag="逆袭">逆袭</span>
+              <span class="tag" data-tag="复仇">复仇</span>
+              <span class="tag" data-tag="系统">系统流</span>
+              <span class="tag" data-tag="重生">重生</span>
+              <span class="tag" data-tag="穿越">穿越</span>
+              <span class="tag" data-tag="种田">种田</span>
+              <span class="tag" data-tag="学院">学院</span>
+              <span class="tag" data-tag="悬疑">悬疑</span>
+              <span class="tag" data-tag="恋爱">恋爱</span>
+              <span class="tag" data-tag="升级">升级流</span>
+              <span class="tag" data-tag="经营">经营</span>
+              <span class="tag" data-tag="群像">群像</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="novel-style">文风</label>
+            <div class="combo-input">
+              <input type="text" id="novel-style" class="input-dark" list="style-presets" placeholder="选择或输入文风...">
+              <datalist id="style-presets">
+                <option value="轻松诙谐">
+                <option value="热血燃">
+                <option value="细腻文艺">
+                <option value="冷峻写实">
+                <option value="浪漫唯美">
+                <option value="黑暗深沉">
+                <option value="冷幽默讽刺">
+                <option value="意识流">
+                <option value="轻小说">
+                <option value="硬汉派">
+              </datalist>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="novel-protagonist">主角类型偏好</label>
+            <input type="text" id="novel-protagonist" class="input-dark" placeholder="如：冷静睿智的侦探、热血少年、废柴逆袭...">
+          </div>
+
+          <div class="form-group">
+            <label for="novel-extra">额外要求（可选）</label>
+            <textarea id="novel-extra" class="input-dark textarea" rows="3" placeholder="任何关于故事的特殊要求，比如：要有猫、禁止恋爱线、第一人称视角..."></textarea>
+          </div>
+
+          <div class="wizard-buttons">
+            <button id="btn-wizard-cancel" class="btn-secondary">取消</button>
+            <button id="btn-wizard-next-1" class="btn-primary btn-glow">生成世界观设定 →</button>
+          </div>
+        </div>
+
+        <!-- Step 2: Bible & Outline Generation -->
+        <div id="wizard-step-2" class="wizard-panel">
+          <h3>AI 正在构建你的故事世界...</h3>
+          <div id="gen-status" class="gen-status">
+            <div class="gen-spinner"></div>
+            <p id="gen-status-text">准备生成...</p>
+          </div>
+
+          <div id="gen-results" class="hidden">
+            <div class="gen-tabs">
+              <button class="gen-tab active" data-gen-tab="bible">世界观设定</button>
+              <button class="gen-tab" data-gen-tab="outline">故事大纲</button>
+            </div>
+
+            <div id="gen-panel-bible" class="gen-panel active">
+              <div class="gen-editable" id="bible-editor" contenteditable="false">
+                <p class="text-muted">等待生成...</p>
+              </div>
+            </div>
+
+            <div id="gen-panel-outline" class="gen-panel">
+              <div class="gen-editable" id="outline-editor" contenteditable="false">
+                <p class="text-muted">等待生成...</p>
+              </div>
+            </div>
+
+            <div class="wizard-buttons">
+              <button id="btn-regenerate" class="btn-secondary">🔄 重新生成</button>
+              <button id="btn-wizard-start-read" class="btn-primary btn-glow">开始阅读 →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== READER VIEW ==================== -->
+    <div id="view-reader" class="view">
+      <div class="reader-layout">
+        <!-- Left: Reading Area -->
+        <main class="reader-main" id="reader-main">
+          <div class="reader-header-bar">
+            <button id="btn-reader-back" class="btn-icon" title="返回书斋">
+              <svg viewBox="0 0 24 24" width="20" height="20"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+            </button>
+            <div class="reader-chapter-info">
+              <span id="reader-novel-title">--</span>
+              <span class="separator">·</span>
+              <span id="reader-chapter-num">第 1 章</span>
+            </div>
+            <button id="btn-toggle-sidebar" class="btn-icon" title="侧边栏">
+              <svg viewBox="0 0 24 24" width="20" height="20"><rect x="3" y="3" width="7" height="18" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="14" y="3" width="7" height="18" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+            </button>
+          </div>
+
+          <div class="reader-content" id="reader-content">
+            <h2 class="chapter-title" id="chapter-title"></h2>
+            <div class="chapter-body" id="chapter-body">
+              <p class="text-muted">准备生成章节...</p>
+            </div>
+            <div class="typing-indicator hidden" id="typing-indicator">
+              <span>AI 正在奋笔疾书</span>
+              <span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>
+            </div>
+          </div>
+
+          <!-- Bottom: Choices -->
+          <div class="reader-choices" id="reader-choices">
+            <!-- Dynamically filled -->
+          </div>
+        </main>
+
+        <!-- Right: Sidebar / God View -->
+        <aside class="reader-sidebar" id="reader-sidebar">
+          <div class="sidebar-section">
+            <h4 class="sidebar-heading">📖 进度追踪</h4>
+            <div class="outline-progress" id="outline-progress">
+              <!-- Outline nodes rendered here -->
+            </div>
+          </div>
+          <div class="sidebar-section">
+            <h4 class="sidebar-heading">👥 角色关系</h4>
+            <div class="character-list" id="character-list">
+              <!-- Characters rendered here -->
+            </div>
+          </div>
+          <div class="sidebar-section">
+            <h4 class="sidebar-heading">🌍 世界观速览</h4>
+            <div class="world-rules" id="world-rules-quick">
+              <!-- Quick reference -->
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- ==================== SETTINGS VIEW ==================== -->
+    <div id="view-settings" class="view">
+      <div class="settings-container">
+        <h2>设置</h2>
+
+        <section class="settings-section">
+          <h3>API 配置</h3>
+          <p class="text-muted">支持任何 OpenAI 兼容接口（DeepSeek、Gemini、Groq 等）</p>
+
+          <div class="form-group">
+            <label for="settings-api-key">API Key</label>
+            <input type="password" id="settings-api-key" class="input-dark" placeholder="sk-...">
+            <button id="btn-toggle-api-key" class="btn-text">👁 显示</button>
+          </div>
+
+          <div class="form-group">
+            <label for="settings-api-url">API Endpoint URL</label>
+            <input type="text" id="settings-api-url" class="input-dark" placeholder="https://api.deepseek.com/v1/chat/completions">
+          </div>
+
+          <div class="form-group">
+            <label for="settings-api-model">模型名称</label>
+            <input type="text" id="settings-api-model" class="input-dark" placeholder="deepseek-chat">
+          </div>
+
+          <div class="form-group">
+            <label for="settings-api-preset">供应商预设</label>
+            <div class="preset-row">
+              <select id="settings-api-preset" class="input-dark">
+                <option value="">-- 选择供应商 --</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="gemini">Gemini</option>
+                <option value="groq">Groq</option>
+                <option value="openai">OpenAI</option>
+              </select>
+              <button id="btn-fetch-models" class="btn-secondary" title="获取该供应商的可用模型列表">📡 获取模型</button>
+            </div>
+          </div>
+
+          <button id="btn-test-api" class="btn-secondary">🔌 测试连接</button>
+          <span id="api-test-result" class="api-test-result"></span>
+        </section>
+
+        <section class="settings-section">
+          <h3>阅读偏好</h3>
+          <div class="form-group">
+            <label for="settings-font-size">字号</label>
+            <input type="range" id="settings-font-size" min="14" max="24" value="18" step="1">
+            <span id="font-size-value">18px</span>
+          </div>
+          <div class="form-group">
+            <label for="settings-line-height">行间距</label>
+            <input type="range" id="settings-line-height" min="1.5" max="2.8" value="2.0" step="0.1">
+            <span id="line-height-value">2.0</span>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3>数据管理</h3>
+          <button id="btn-export-all" class="btn-secondary">📥 导出所有数据</button>
+          <button id="btn-import-all" class="btn-secondary">📤 导入数据</button>
+          <input type="file" id="import-file-input" accept=".json" class="hidden">
+          <button id="btn-clear-all" class="btn-danger">🗑 清除所有数据</button>
+        </section>
+
+        <div class="settings-footer">
+          <button id="btn-settings-save" class="btn-primary">保存设置</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== MODALS ==================== -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+      <div class="modal" id="modal-box">
+        <div class="modal-header">
+          <h3 id="modal-title"></h3>
+          <button id="modal-close" class="btn-icon">✕</button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+        <div class="modal-footer" id="modal-footer"></div>
+      </div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Mobile sidebar overlay -->
+    <div id="sidebar-overlay" class="sidebar-overlay hidden"></div>
+  </div>
+</body>
+</html>

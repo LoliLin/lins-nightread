@@ -1,0 +1,7 @@
+.alma-snapshots
+
+# Windows reserved names
+nul
+NUL
+Nul
+nul.*
