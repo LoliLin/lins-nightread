@@ -1390,6 +1390,54 @@ class UIManager {
     body.style.fontSize = `${this.fontSize}px`;
     body.style.lineHeight = this.lineHeight;
   }
+
+  initCustomDropdowns() {
+    // Replace <datalist> with styled custom dropdowns
+    document.querySelectorAll('input[list]').forEach(input => {
+      const listId = input.getAttribute('list');
+      const datalist = document.getElementById(listId);
+      if (!datalist) return;
+
+      // Get options from datalist
+      const options = Array.from(datalist.querySelectorAll('option')).map(o => o.value);
+      if (options.length === 0) return;
+
+      // Create the custom dropdown
+      const wrapper = document.createElement('div');
+      wrapper.style.position = 'relative';
+      wrapper.style.display = 'inline-block';
+      wrapper.style.width = '100%';
+      input.parentNode.insertBefore(wrapper, input);
+      wrapper.appendChild(input);
+
+      const dd = document.createElement('div');
+      dd.className = 'custom-dropdown';
+      dd.innerHTML = options.map(v => `<div class="custom-dropdown-item" data-value="${this._escape(v)}">${this._escape(v)}</div>`).join('');
+      wrapper.appendChild(dd);
+
+      // Show on focus
+      input.addEventListener('focus', () => {
+        dd.innerHTML = options.map(v => `<div class="custom-dropdown-item" data-value="${this._escape(v)}">${this._escape(v)}</div>`).join('');
+        dd.classList.add('show');
+      });
+
+      // Hide on blur (with delay to allow click on item)
+      input.addEventListener('blur', () => {
+        setTimeout(() => dd.classList.remove('show'), 200);
+      });
+
+      // Click to select
+      dd.addEventListener('mousedown', (e) => {
+        const item = e.target.closest('.custom-dropdown-item');
+        if (item) {
+          input.value = item.dataset.value;
+          dd.classList.remove('show');
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    });
+  }
 }
 
 // ==================== MAIN APPLICATION ====================
@@ -1439,6 +1487,7 @@ class App {
 
     this._bindEvents();
     this._loadSettings();
+    this.ui.initCustomDropdowns();
 
     // Register service worker
     if ('serviceWorker' in navigator) {
@@ -1813,19 +1862,41 @@ n    // 移动端长按 -> 签出分支
     }
 
     if (fetchedModels.length > 0) {
-      // Create a datalist for the model input
-      let datalist = document.getElementById('model-datalist');
-      if (!datalist) {
-        datalist = document.createElement('datalist');
-        datalist.id = 'model-datalist';
-        modelInput.setAttribute('list', 'model-datalist');
-        modelInput.parentNode.appendChild(datalist);
-      }
-      datalist.innerHTML = fetchedModels.map(m => `<option value="${m}">`).join('');
       modelInput.value = fetchedModels[0];
+      // Ensure model input has a styled custom dropdown
+      const existingWrapper = modelInput.closest('.model-dropdown-wrapper');
+      if (existingWrapper) existingWrapper.remove();
+      const wrapper = document.createElement('div');
+      wrapper.className = 'model-dropdown-wrapper';
+      wrapper.style.position = 'relative';
+      wrapper.style.display = 'inline-block';
+      wrapper.style.width = '100%';
+      modelInput.parentNode.insertBefore(wrapper, modelInput);
+      wrapper.appendChild(modelInput);
+      const dd = document.createElement('div');
+      dd.className = 'custom-dropdown';
+      dd.innerHTML = fetchedModels.map(m => `<div class="custom-dropdown-item" data-value="${m}">${m}</div>`).join('');
+      wrapper.appendChild(dd);
+      let isOpen = false;
+      const showModels = () => {
+        dd.innerHTML = fetchedModels.map(m => `<div class="custom-dropdown-item" data-value="${m}">${m}</div>`).join('');
+        dd.classList.add('show');
+        isOpen = true;
+      };
+      modelInput.addEventListener('focus', showModels);
+      modelInput.addEventListener('blur', () => setTimeout(() => { dd.classList.remove('show'); isOpen = false; }, 200));
+      dd.addEventListener('mousedown', (e) => {
+        const item = e.target.closest('.custom-dropdown-item');
+        if (item) {
+          modelInput.value = item.dataset.value;
+          dd.classList.remove('show');
+          isOpen = false;
+          modelInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      });
       modelInput.focus();
       modelInput.select();
-      resultEl.innerHTML = `✓ 找到 ${fetchedModels.length} 个模型，已填入第一个。<br><small>点击输入框或按 ↓ 查看全部</small>`;
+      resultEl.innerHTML = `✓ 找到 ${fetchedModels.length} 个模型`;
       resultEl.style.color = 'var(--success)';
     } else {
       resultEl.textContent = '⚠ 未能自动获取模型列表，请手动输入模型名称';

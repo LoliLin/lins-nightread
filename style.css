@@ -993,6 +993,32 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 /* --- RESPONSIVE --- */
+n/* Custom dropdown (replaces datalist for dark theme compatibility) */
+.custom-dropdown {
+  position: absolute;
+  z-index: 500;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  max-height: 200px;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  display: none;
+  min-width: 180px;
+}
+.custom-dropdown.show { display: block; }
+.custom-dropdown-item {
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.custom-dropdown-item:hover {
+  background: var(--accent-soft);
+  color: var(--accent-glow);
+}
+
 @media (max-width: 900px) {
   .reader-layout { position: relative; }
   .reader-sidebar {
