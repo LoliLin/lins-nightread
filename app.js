@@ -758,7 +758,7 @@ ${bibleSummary}
 
    */
 
-  async generateChapter(bible, outline, novel, chapterNumber, nodeId, previousSummary, previousChapterFull, onToken = null) {
+  async generateChapter(bible, outline, novel, chapterNumber, nodeId, previousSummary, previousChapterFull, onToken = null, branchPrompt = null) {
 
     const bibleContext = this._formatBibleContext(bible);
 
@@ -806,7 +806,9 @@ ${bibleContext}
 
     contextParts.push(`【本章大纲】\n${nodeInfo}`);
 
-
+    if (branchPrompt) {
+      contextParts.push(`【分支创作方向】\n${branchPrompt}`);
+    }
 
     const userPrompt = `请写出《${novel.title || '未命名'}》的第 ${chapterNumber} 章。
 
@@ -2270,7 +2272,7 @@ class App {
 
   }
 
-  async _generateChapter(chapterNum, nodeId) {
+  async _generateChapter(chapterNum, nodeId, branchPrompt = null) {
 
     if (this.isGenerating) return;
     this.isGenerating = true;
@@ -2377,10 +2379,11 @@ class App {
 
           this.ui.appendChapterToken(token);
 
-        }
+        },
+
+        branchPrompt
 
       );
-
 
 
       this.ui.showTypingIndicator(false);
@@ -2615,7 +2618,7 @@ class App {
 
     if (nextNodeId) {
 
-      await this._generateChapter(chapterNum + 1, nextNodeId);
+      await this._generateChapter(chapterNum + 1, nextNodeId, prompt);
 
     }
     // overlay already hidden above
