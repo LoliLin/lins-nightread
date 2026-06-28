@@ -808,7 +808,7 @@ ${bibleContext}
 
 - 使用中文写作
 
-- 章节正文写完后，用 `<Note>` 标签附上本章的故事笔记，格式如下：
+- 章节正文写完后，用 <Note> 标签附上本章的故事笔记，格式如下：
 
   <Note>
   ## 关键事件
@@ -2262,7 +2262,7 @@ class App {
 
     this._updateReaderSidebar();
 
-    await this._generateChapter(1, outline.nodes[0]?.id || 'node_1');
+    await this._generateChapter(1, outline?.nodes?.[0]?.id || 'node_1');
   }
 
   // --- Reader Flow ---
