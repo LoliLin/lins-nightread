@@ -808,33 +808,20 @@ ${bibleContext}
 
 - 使用中文写作
 
-- 章节末尾用 ---NOTES--- 输出详细的故事笔记，格式如下：
+- 章节正文写完后，用 `<Note>` 标签附上本章的故事笔记，格式如下：
 
-  ---NOTES---
-
+  <Note>
   ## 关键事件
-
-  - 发生了什么？具体的人物行动、对话交锋、场景变化
-  - 每个事件写出具体细节，不要笼统概括
-
+  - 具体的人物行动、对话交锋、场景变化
   ## 角色状态变化
-
-  - 角色名: 本章结束时的心态、价值观变化、新认知
-  - 角色之间的关系变化（信任/猜疑/依赖/敌对）
-
+  - 角色名: 心态、关系变化
   ## 已揭示的信息
-
-  - 本章揭露了哪些世界观秘密、角色背景、伏笔
-  - 这些信息如何改变了故事的走向
-
+  - 本章揭露的秘密、世界观设定
   ## 未解决的线索
-
-  - 目前悬而未决的具体问题
-  - 读者可能期待的走向
-
+  - 悬而未决的问题
   ## 后续建议
-
-  - 基于当前剧情，1-3 个合理的后续发展方向`;
+  - 1-3 个合理发展方向
+  </Note>`;
 
 
 
@@ -906,15 +893,21 @@ ${bibleContext}
 
     }
 
-    // Parse story notes
-    const notesMarker = '---NOTES---';
-    const markerIdx = text.indexOf(notesMarker);
+    // Parse story notes — 只认 <Note> 标签，避免误匹配正文中的 --- 或 **
+    const noteTag = '<Note>';
+    const closeTag = '</Note>';
+    const openIdx = text.indexOf(noteTag);
+    const closeIdx = text.indexOf(closeTag);
     let content = text.trim();
     let notes = '';
 
-    if (markerIdx !== -1) {
-      content = text.slice(0, markerIdx).trim();
-      notes = text.slice(markerIdx + notesMarker.length).trim();
+    if (openIdx !== -1) {
+      content = text.slice(0, openIdx).trim();
+      if (closeIdx !== -1) {
+        notes = text.slice(openIdx + noteTag.length, closeIdx).trim();
+      } else {
+        notes = text.slice(openIdx + noteTag.length).trim();
+      }
     }
 
     return { content, notes };
@@ -1178,20 +1171,7 @@ class UIManager {
       body.innerHTML = '';
     }
 
-    // 检测到 ---NOTES--- 标记后停止追加，笔记不显示给读者
-    if (body.textContent.includes('---NOTES---')) return;
-
-    const accumulated = body.textContent + token;
-    const notesIdx = accumulated.indexOf('---NOTES---');
-    if (notesIdx !== -1) {
-      // 只追加到 ---NOTES--- 之前的文本
-      const cleanToken = token.slice(0, Math.max(0, notesIdx - body.textContent.length));
-      if (!cleanToken.trim()) return;
-      body.innerHTML = this._formatChapterContent(accumulated.slice(0, notesIdx));
-      return;
-    }
-
-    // Append to last paragraph or create new
+    // 流式写入时不过滤，生成完成后统一用 result.content 重新渲染
     const lastP = body.querySelector('p:last-of-type');
     if (lastP && !lastP.textContent.endsWith('\n\n')) {
       lastP.textContent += token;
