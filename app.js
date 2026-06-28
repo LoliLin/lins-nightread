@@ -362,7 +362,8 @@ class APIManager {
     return {
       apiKey: '',
       apiUrl: 'https://api.deepseek.com/v1/chat/completions',
-      apiModel: 'deepseek-chat'
+      apiModel: 'deepseek-chat',
+      reasoner: false
     };
   }
 
@@ -377,6 +378,17 @@ class APIManager {
 
   isConfigured() {
     return !!(this.settings.apiKey && this.settings.apiUrl);
+  }
+
+  getMaxContextChars() {
+    // 根据供应商估算可用上下文预算（留余量给模型回复）
+    const url = this.settings.apiUrl || '';
+    if (url.includes('google') || url.includes('gemini')) return 500000;
+    if (url.includes('deepseek')) return 80000;
+    if (url.includes('groq')) return 80000;
+    if (url.includes('openai')) return 80000;
+    if (url.includes('anthropic') || url.includes('claude')) return 80000;
+    return 32000; // 未知模型保守值
   }
 
   async testConnection() {
@@ -428,9 +440,15 @@ class APIManager {
       stream: true
     };
 
+    if (this.settings.reasoner) {
+      body.reasoning_effort = 'high';
+      body.extra_body = { thinking: { type: 'enabled' } };
+    }
+
     let fullText = '';
     let retries = 0;
     const maxRetries = 2;
+
 
     while (retries <= maxRetries) {
       try {
@@ -484,6 +502,7 @@ class APIManager {
               dataStr = dataStr.slice(5).trim();
             }
 
+            let usage = null;
             try {
               const json = JSON.parse(dataStr);
               const choices = json.choices || [];
@@ -495,6 +514,7 @@ class APIManager {
                   if (onToken) onToken(content, fullText);
                 }
               }
+              if (json.usage) usage = json.usage;
             } catch (e) {
               // Skip unparseable lines
             }
@@ -502,6 +522,7 @@ class APIManager {
         }
 
         // Process remaining buffer
+        let finalUsage = null;
         if (buffer.trim() && buffer.trim() !== 'data: [DONE]') {
           let ds = buffer.trim();
           if (ds.startsWith('data: ')) ds = ds.slice(6);
@@ -516,10 +537,11 @@ class APIManager {
                 if (onToken) onToken(content, fullText);
               }
             }
+            if (json.usage) finalUsage = json.usage;
           } catch (e) { /* ignore */ }
         }
 
-        if (onDone) onDone(fullText);
+        if (onDone) onDone(fullText, finalUsage);
         return fullText;
 
       } catch (e) {
@@ -758,7 +780,7 @@ ${bibleSummary}
 
    */
 
-  async generateChapter(bible, outline, novel, chapterNumber, nodeId, previousSummary, previousChapterFull, onToken = null, branchPrompt = null) {
+  async generateChapter(bible, outline, novel, chapterNumber, nodeId, previousSummary, previousChapterFull, onToken = null, branchPrompt = null, storyNotes = '') {
 
     const bibleContext = this._formatBibleContext(bible);
 
@@ -782,26 +804,51 @@ ${bibleContext}
 
 - 文风：${novel.style || '文学性'}
 
-- 每章 1500-3000 字
-
 - 描写细腻，对话生动，情节推进有力
 
-- 使用中文写作`;
+- 使用中文写作
+
+- 章节末尾用 ---NOTES--- 输出详细的故事笔记，格式如下：
+
+  ---NOTES---
+
+  ## 关键事件
+
+  - 发生了什么？具体的人物行动、对话交锋、场景变化
+  - 每个事件写出具体细节，不要笼统概括
+
+  ## 角色状态变化
+
+  - 角色名: 本章结束时的心态、价值观变化、新认知
+  - 角色之间的关系变化（信任/猜疑/依赖/敌对）
+
+  ## 已揭示的信息
+
+  - 本章揭露了哪些世界观秘密、角色背景、伏笔
+  - 这些信息如何改变了故事的走向
+
+  ## 未解决的线索
+
+  - 目前悬而未决的具体问题
+  - 读者可能期待的走向
+
+  ## 后续建议
+
+  - 基于当前剧情，1-3 个合理的后续发展方向`;
 
 
 
     const contextParts = [];
 
-    if (previousSummary) {
-
-      contextParts.push(`【前情提要】\n${previousSummary}`);
+    if (storyNotes) {
+      contextParts.push(`【累积故事笔记】\n${storyNotes}`);
 
     }
 
     if (previousChapterFull) {
 
-      contextParts.push(`【上一章完整内容】\n${previousChapterFull.slice(-2000)}`);
-
+      // 上一章最后 3000 字保持叙事连贯
+      contextParts.push(`【上一章结尾】\n${previousChapterFull.slice(-3000)}`);
     }
 
     contextParts.push(`【本章大纲】\n${nodeInfo}`);
@@ -810,17 +857,7 @@ ${bibleContext}
       contextParts.push(`【分支创作方向】\n${branchPrompt}`);
     }
 
-    const userPrompt = `请写出《${novel.title || '未命名'}》的第 ${chapterNumber} 章。
-
-
-
-${contextParts.join('\n\n')}
-
-
-
-请开始写作。`;
-
-
+    const userPrompt = `请写出《${novel.title || '未命名'}》的第 ${chapterNumber} 章。\n\n${contextParts.join('\n\n')}\n\n请开始写作。`;
 
     const messages = [
 
@@ -833,6 +870,7 @@ ${contextParts.join('\n\n')}
 
 
     let rawText = '';
+    let chapterUsage = null;
 
     await this.api.streamChat(messages, {
 
@@ -846,13 +884,17 @@ ${contextParts.join('\n\n')}
 
         if (onToken) onToken(token, full);
 
+      },
+
+      onDone: (full, usage) => {
+        chapterUsage = usage;
       }
 
     });
 
-
-
-    return this._parseChapter(rawText);
+    const parsed = this._parseChapter(rawText);
+    parsed.usage = chapterUsage;
+    return parsed;
 
   }
 
@@ -864,9 +906,18 @@ ${contextParts.join('\n\n')}
 
     }
 
+    // Parse story notes
+    const notesMarker = '---NOTES---';
+    const markerIdx = text.indexOf(notesMarker);
+    let content = text.trim();
+    let notes = '';
 
+    if (markerIdx !== -1) {
+      content = text.slice(0, markerIdx).trim();
+      notes = text.slice(markerIdx + notesMarker.length).trim();
+    }
 
-    return { content: text.trim() };
+    return { content, notes };
 
   }
 
@@ -1087,8 +1138,10 @@ class UIManager {
 
     // 只在子分支显示分支标签
     const isSubBranch = window._app?.currentBranchId && window._app?.currentBranchId.includes('_branch_');
-    if (isSubBranch) {
-      badge.textContent = '✤ ' + window._app.currentBranchId.slice(-6);
+    if (isSubBranch && window._app?._allBranches) {
+      const branchRec = window._app._allBranches.find(b => b.id === window._app.currentBranchId);
+      const branchName = branchRec?.name || branchRec?.forkPrompt?.slice(0, 16) || window._app.currentBranchId.slice(-6);
+      badge.textContent = '✤ ' + branchName;
       badge.classList.remove('hidden');
     } else {
       badge.classList.add('hidden');
@@ -1125,6 +1178,19 @@ class UIManager {
       body.innerHTML = '';
     }
 
+    // 检测到 ---NOTES--- 标记后停止追加，笔记不显示给读者
+    if (body.textContent.includes('---NOTES---')) return;
+
+    const accumulated = body.textContent + token;
+    const notesIdx = accumulated.indexOf('---NOTES---');
+    if (notesIdx !== -1) {
+      // 只追加到 ---NOTES--- 之前的文本
+      const cleanToken = token.slice(0, Math.max(0, notesIdx - body.textContent.length));
+      if (!cleanToken.trim()) return;
+      body.innerHTML = this._formatChapterContent(accumulated.slice(0, notesIdx));
+      return;
+    }
+
     // Append to last paragraph or create new
     const lastP = body.querySelector('p:last-of-type');
     if (lastP && !lastP.textContent.endsWith('\n\n')) {
@@ -1134,9 +1200,6 @@ class UIManager {
       p.textContent = token;
       body.appendChild(p);
     }
-
-    // 不自动滚动，让用户自己控制阅读位置
-
   }
 
 
@@ -1353,7 +1416,15 @@ class UIManager {
 
       const label = isMain ? '主分支' : `✤ ${(b.name || b.forkPrompt).slice(0, 18)}${(b.name || b.forkPrompt).length > 18 ? '...' : ''}`;
 
-      const detail = isMain ? '' : `第 ${b.forkChapter} 章签出`;
+      // 读取 token 用量
+      const tokenKey = 'nightread_tokens_' + (window._app?.currentNovel?.id || '') + '_' + b.id;
+      const tokens = parseInt(localStorage.getItem(tokenKey) || '0');
+      const tokenStr = tokens > 0 ? (tokens >= 1000 ? (tokens / 1000).toFixed(1) + 'K' : tokens + '') : '';
+
+      const detailParts = [];
+      if (!isMain) detailParts.push(`第 ${b.forkChapter} 章签出`);
+      if (tokenStr) detailParts.push(`${tokenStr} tokens`);
+      const detail = detailParts.join(' · ');
 
       return `
 
@@ -1486,6 +1557,10 @@ class App {
     // Generation state
 
     this.isGenerating = false;
+
+    // Story notes accumulator
+
+    this.currentStoryNotes = '';
   }
 
   async init() {
@@ -1782,6 +1857,7 @@ class App {
     document.getElementById('settings-api-key').value = settings.apiKey || '';
     document.getElementById('settings-api-url').value = settings.apiUrl || '';
     document.getElementById('settings-api-model').value = settings.apiModel || '';
+    document.getElementById('settings-reasoner').checked = settings.reasoner || false;
     document.getElementById('settings-font-size').value = this.ui.fontSize;
     document.getElementById('font-size-value').textContent = `${this.ui.fontSize}px`;
     document.getElementById('settings-line-height').value = this.ui.lineHeight;
@@ -1792,7 +1868,8 @@ class App {
     const settings = {
       apiKey: document.getElementById('settings-api-key').value.trim(),
       apiUrl: document.getElementById('settings-api-url').value.trim(),
-      apiModel: document.getElementById('settings-api-model').value.trim()
+      apiModel: document.getElementById('settings-api-model').value.trim(),
+      reasoner: document.getElementById('settings-reasoner').checked
     };
 
     if (!settings.apiUrl) {
@@ -2195,6 +2272,8 @@ class App {
 
     this.currentBranchId = mainBranch.id;
 
+        this.currentStoryNotes = '';
+
 
 
     // Navigate to reader and generate chapter 1
@@ -2324,6 +2403,8 @@ class App {
     this.currentChapters = chapters;
 
     this.currentChapterNum = novel.lastReadChapter || 1;
+
+        this.currentStoryNotes = this._loadStoryNotes(novelId, this.currentBranchId);
 
 
 
@@ -2488,7 +2569,9 @@ class App {
 
         },
 
-        branchPrompt
+        branchPrompt,
+
+        this.currentStoryNotes || ''
 
       );
 
@@ -2496,6 +2579,9 @@ class App {
       this.ui.showTypingIndicator(false);
 
 
+
+      // 用纯净内容（去除 ---NOTES---）重新渲染阅读区
+      document.getElementById('chapter-body').innerHTML = this.ui._formatChapterContent(result.content);
 
       // Build chapter object
 
@@ -2556,6 +2642,22 @@ class App {
       await this.storage.saveNovel(this.currentNovel);
 
 
+
+      // Parse and save story notes
+      if (result.notes) {
+        const newNotes = result.notes;
+        this.currentStoryNotes = this.currentStoryNotes
+          ? this.currentStoryNotes + '\n\n---\n\n' + newNotes
+          : newNotes;
+        this._saveStoryNotes(this.currentNovel.id, this.currentBranchId, this.currentStoryNotes);
+      }
+
+      // 累计 token 用量
+      if (result.usage?.total_tokens) {
+        const key = 'nightread_tokens_' + this.currentNovel.id + '_' + this.currentBranchId;
+        const prev = parseInt(localStorage.getItem(key) || '0');
+        localStorage.setItem(key, String(prev + result.usage.total_tokens));
+      }
 
       // Update UI
 
@@ -2701,6 +2803,11 @@ class App {
 
 
 
+    // Copy story notes from parent branch
+    const parentNotes = this._loadStoryNotes(this.currentNovel.id, this.currentBranchId);
+    this.currentStoryNotes = parentNotes || '';
+    this._saveStoryNotes(this.currentNovel.id, branchId, this.currentStoryNotes);
+
     // 切换分支上下文
 
     this.currentBranchId = branchId;
@@ -2795,6 +2902,7 @@ class App {
 
     }
 
+    this.currentStoryNotes = this._loadStoryNotes(this.currentNovel.id, branchId);
     this._updateReaderSidebar();
 
     this.ui.toast(`已切换到 ${branchId.endsWith('_main') ? '主分支' : '分支'}`, 'info');
@@ -2867,7 +2975,10 @@ class App {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${novel.title || '未命名'}.txt`;
+    // 文件名：书名-分支名.txt
+    const branchMeta = this._allBranches?.find(b => b.id === this.currentBranchId);
+    const branchSuffix = branchMeta && !branchMeta.id.endsWith('_main') ? '-' + (branchMeta.name || branchMeta.forkPrompt?.slice(0, 12)) : '';
+    a.download = `${novel.title || '未命名'}${branchSuffix}.txt`;
     a.click();
     URL.revokeObjectURL(url);
 
@@ -2928,6 +3039,23 @@ class App {
     }
 
   }
+
+  _loadStoryNotes(novelId, branchId) {
+    try {
+      const key = 'nightread_notes_' + novelId + '_' + branchId;
+      return localStorage.getItem(key) || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  _saveStoryNotes(novelId, branchId, notes) {
+    try {
+      const key = 'nightread_notes_' + novelId + '_' + branchId;
+      localStorage.setItem(key, notes || '');
+    } catch (e) { /* ignore */ }
+  }
+
 }
 
 // ==================== BOOTSTRAP ====================
