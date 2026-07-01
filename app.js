@@ -189,8 +189,8 @@ class StorageManager {
         const store = this._store('branches', 'readwrite');
         return this._promisify(store.put(branch));
     }
-    async exportAll() {
-        const novels = await this.getAllNovels();
+
+    async exportAll(novels) {
         const data = {
             novels,
             bibles: [],
@@ -221,6 +221,12 @@ class StorageManager {
                 if (notes) data._notes[mapKey] = notes;
             }
         }
+        return data;
+    }
+   
+    async exportAll() {
+        const novels = await this.getAllNovels();
+        const data = this.exportAll(novels);
         return data;
     }
     async importAll(data) {
@@ -2406,28 +2412,7 @@ async importFromUrl(url) {
         const outline = this.currentOutline;
         const chapters = this.currentChapters?.filter(c => c.content) || [];
         const branches = this._allBranches || [];
-        const exportData = {
-            type: 'nightread-book',
-            version: 1,
-            novel: { id: novel.id, title: novel.title, genre: novel.genre, style: novel.style, tropes: novel.tropes, createdAt: novel.createdAt, lastReadChapter: novel.lastReadChapter, totalChapters: novel.totalChapters },
-            bible: bible ? { novelId: novel.id, ...bible } : null,
-            outline: outline ? { novelId: novel.id, ...outline } : null,
-            chapters: chapters.map(c => ({ ...c })),
-            branches: branches.map(b => ({ ...b })),
-            _tokens: {},
-            _notes: {}
-        };
-        // 收集所有分支的 tokens 和 notes
-        for (const branch of branches) {
-            const bid = branch.id;
-            const tokenKey = `nightread_tokens_${novel.id}_${bid}`;
-            const noteKey = `nightread_notes_${novel.id}_${bid}`;
-            const tokens = localStorage.getItem(tokenKey);
-            const notes = localStorage.getItem(noteKey);
-            const mapKey = `${novel.id}_${bid}`;
-            if (tokens) exportData._tokens[mapKey] = parseInt(tokens, 10);
-            if (notes) exportData._notes[mapKey] = notes;
-        }
+        const exportData = await this.storage.exportAll([novel]);
         
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
