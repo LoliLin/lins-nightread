@@ -330,6 +330,7 @@ class APIManager {
             temperature: temperature,
             max_tokens: maxTokens,
             stream: true
+            stream_options: { include_usage: true },
         };
         if (this.settings.reasoner) {
             body.reasoning_effort = 'high';
@@ -393,19 +394,29 @@ class APIManager {
                         if (dataStr.startsWith('data:')) {
                             dataStr = dataStr.slice(5).trim();
                         }
-                        let usage = null;
                         try {
+
                             const json = JSON.parse(dataStr);
+
                             const choices = json.choices || [];
+
                             for (const choice of choices) {
+
                                 const delta = choice.delta || {};
+
                                 const content = delta.content || '';
+
                                 if (content) {
+
                                     fullText += content;
+
                                     if (onToken) onToken(content, fullText);
+
                                 }
+
                             }
-                            if (json.usage) usage = json.usage;
+
+                            if (json.usage) finalUsage = json.usage;
                         } catch (e) {
                             // Skip unparseable lines
                         }
@@ -659,8 +670,7 @@ ${bibleSummary}
 【设定】
 ${bibleContext}
 【大纲】
-${JSON.stringify(nodes)}
-{branchPrompt}
+${JSON.stringify(outline.nodes)}
 【写作要求】
 - 题材：${novel.genre || '不限'}
 - 文风：${novel.style || '文学性'}
@@ -803,9 +813,10 @@ class UIManager {
         document.getElementById('modal-overlay').classList.add('hidden');
     }
     // --- Library ---
-    renderLibrary(novels) {
+    renderLibrary(novels, novel2TokenMap) {
         const grid = document.getElementById('library-grid');
         const empty = document.getElementById('library-empty');
+        
         if (!novels || novels.length === 0) {
             grid.innerHTML = '';
             empty.classList.remove('hidden');
@@ -813,43 +824,39 @@ class UIManager {
         }
         empty.classList.add('hidden');
 
-  const htmlParts = await Promise.all(
-    novels.map(async (novel) => {
-      // 1. 获取该小说的所有分支
-      const branches = await this.storage.getBranches(novel.id);
+        const htmlParts = 
+            novels.map((novel) => {
 
-      // 2. 统计所有分支的 tokens 总量
-      let tokens = 0;
-      for (const b of branches) {
-        const tokenKey = `nightread_tokens_${novel.id}_${b.id}`;
-        tokens += parseInt(localStorage.getItem(tokenKey) || '0', 10);
-      }
-      const tokenStr = tokens > 0
-        ? tokens >= 1000
-          ? (tokens / 1000).toFixed(1) + 'k'
-          : tokens.toString()
-        : '';
+                let tokenStr = null;
+                if (novel2TokenMap[novel.id]) {
 
-      // 3. 返回 HTML 字符串
-      return `
-        <div class="novel-card" data-novel-id="${novel.id}" onclick="window._app.openNovel('${novel.id}')">
-          <button class="novel-card-delete" onclick="event.stopPropagation(); window._app.deleteNovelPrompt('${novel.id}')" title="删除">✕</button>
-          <div class="novel-card-title">${this._escape(novel.title || '未命名')}</div>
-          <div class="novel-card-meta">
-            ${novel.genre ? `<span>${this._escape(novel.genre)}</span>` : ''}
-            ${novel.style ? `<span>${this._escape(novel.style)}</span>` : ''}
-            ${novel.tropes?.length ? `<span>${this._escape(novel.tropes.slice(0, 2).join('·'))}</span>` : ''}
-            ${tokenStr ? `<span>${this._escape(tokenStr)} tokens</span>` : ''}
-          </div>
-          <div class="novel-card-progress">
-            已读至第 ${novel.lastReadChapter || 0} 章 · ${novel.totalChapters || 0} 章
-          </div>
-        </div>
-      `;
-    })
-  );
+                    let tokens = novel2TokenMap[novel.id] || 0;
+                    tokenStr = tokens > 0
+                        ? tokens >= 1000
+                            ? (tokens / 1000).toFixed(1) + 'k'
+                            : tokens.toString()
+                        : '';
+                }
+                
 
-  grid.innerHTML = htmlParts.join('');
+                return `
+                    <div class="novel-card" data-novel-id="${novel.id}" onclick="window._app.openNovel('${novel.id}')">
+                        <button class="novel-card-delete" onclick="event.stopPropagation(); window._app.deleteNovelPrompt('${novel.id}')" title="删除">✕</button>
+                            <div class="novel-card-title">${this._escape(novel.title || '未命名')}</div>
+                                <div class="novel-card-meta">
+                                    ${novel.genre ? `<span>${this._escape(novel.genre)}</span>` : ''}
+                                    ${novel.style ? `<span>${this._escape(novel.style)}</span>` : ''}
+                                    ${novel.tropes?.length ? `<span>${this._escape(novel.tropes.slice(0, 2).join('·'))}</span>` : ''}
+                                    ${tokenStr ? `<span>${this._escape(tokenStr)} tokens</span>` : ''}
+                                </div>
+                                <div class="novel-card-progress">
+                                    已读至第 ${novel.lastReadChapter || 0} 章 · ${novel.totalChapters || 0} 章
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+        grid.innerHTML = htmlParts.join('');
        
     }
     _escape(str) {
@@ -1379,7 +1386,29 @@ class App {
     }
     async _refreshLibrary() {
         const novels = await this.storage.getAllNovels();
-        this.ui.renderLibrary(novels);
+        const branchesMap = new Map();
+        const novelId2Token = {}; 
+        
+        /*
+        await Promise.all(
+            novels.map(async (novel) => {
+                const branches = await this.storage.getBranches(novel.id);
+                branchesMap.set(novel.id, branches);
+            })
+        );
+
+        for (const novel of novels) {
+            const branches = branchesMap.get(novel.id) || [];
+            let tokens = 0;
+            for (const b of branches) {
+                const tokenKey = `nightread_tokens_${novel.id}_${b.id}`;
+                tokens += parseInt(localStorage.getItem(tokenKey) || '0', 10);
+            }
+            novelId2Token[novel.id] = tokens;
+        }*/
+            
+
+        this.ui.renderLibrary(novels, novelId2Token);
     }
     _navigateToReader() {
         this.ui.navigateTo('reader');
@@ -1893,10 +1922,14 @@ class App {
                 this._saveStoryNotes(this.currentNovel.id, this.currentBranchId, this.currentStoryNotes);
             }
             // 累计 token 用量
-            if (result.usage?.total_tokens) {
+            const tokensThisChapter = result.usage?.total_tokens || Math.ceil(result.content.length / 2.5);
+            if (tokensThisChapter > 0) {
                 const key = 'nightread_tokens_' + this.currentNovel.id + '_' + this.currentBranchId;
                 const prev = parseInt(localStorage.getItem(key) || '0');
-                localStorage.setItem(key, String(prev + result.usage.total_tokens));
+                localStorage.setItem(key, String(prev + tokensThisChapter));
+            }
+
+
             }
             // Update UI
             document.getElementById('chapter-title').textContent = chapterTitle;
