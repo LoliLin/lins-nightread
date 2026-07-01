@@ -1329,40 +1329,30 @@ class App {
         }
         this._handleResize();
     }
-    async _importFromUrl(url) {
-        try {
-            this.ui.toast('正在从 URL 导入书籍...', 'info');
-            const resp = await fetch(url);
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const data = await resp.json();
-            if (data.type === 'nightread-book' && data.novel) {
-                await this.storage.saveNovel(data.novel);
-                if (data.bible) await this.storage.saveBible(data.bible);
-                if (data.outline) await this.storage.saveOutline(data.outline);
-                for (const ch of (data.chapters || [])) await this.storage.saveChapter(ch);
-                for (const b of (data.branches || [])) await this.storage.saveBranch(b);
-                // 恢复单书导出的 tokens 和 notes
-                if (data._tokens) {
-                    for (const [key, val] of Object.entries(data._tokens)) {
-                        localStorage.setItem(`nightread_tokens_${key}`, String(val));
-                    }
-                }
-                if (data._notes) {
-                    for (const [key, val] of Object.entries(data._notes)) {
-                        localStorage.setItem(`nightread_notes_${key}`, val);
-                    }
-                }
-            } else {
-                await this.storage.importAll(data);
+async importFromUrl(url) {
+    try {
+        // 1. 从 URL 获取文本内容
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('网络请求失败');
+        const textData = await response.text();
+
+        // 2. 模拟一个 File 对象
+        const virtualFile = new File([textData], "downloaded.json", { type: "application/json" });
+
+        // 3. 构造与 _onImportAll 兼容的事件结构并调用
+        const mockEvent = {
+            target: {
+                files: [virtualFile]
             }
-            await this.storage.init();
-            this.ui.toast('导入成功 ✓', 'success');
-            await this._refreshLibrary();
-        } catch (e) {
-            console.error('Import from URL failed:', e);
-            this.ui.toast(`导入失败: ${e.message}`, 'error');
-        }
+        };
+
+        await this._onImportAll(mockEvent);
+
+    } catch (e) {
+        this.ui.toast(`从URL导入失败: ${e.message}`, 'error');
     }
+}
+
     _bindEvents() {
         // Splash
         document.getElementById('btn-splash-start').addEventListener('click', () => this._onSplashStart());
