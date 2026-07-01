@@ -1130,3 +1130,32 @@ n/* Custom dropdown (replaces datalist for dark theme compatibility) */
   .wizard-progress { gap: 0; }
   .wizard-line { width: 24px; }
 }
+
+/* ==================== DRAG & DROP ==================== */
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s;
+}
+.drop-overlay.hidden { display: none; }
+.drop-overlay-inner {
+  text-align: center;
+  padding: 48px 64px;
+  border: 3px dashed var(--accent);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+}
+.drop-overlay-inner svg { color: var(--accent); margin-bottom: 16px; }
+.drop-overlay-inner p { margin: 0 0 6px; font-size: 1.1rem; }
+.drop-overlay.drag-over .drop-overlay-inner {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--card));
+}

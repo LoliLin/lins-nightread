@@ -667,12 +667,12 @@ ${bibleSummary}
         const isEpilogue = nodeId && nodeId.startsWith('epilogue_');
         const node = outline.nodes?.find(n => n.id === nodeId) || {};
         const nodeInfo = isEpilogue
-            ? `本章为后日谈（故事主线完结后的后续篇章），用于收尾、交代角色结局、揭示未完的伏笔。在后日谈章节中，你需要自拟章节标题，并在章节正文中合理交代角色命运、世界观变化和未解之谜。`
+            ? `本章为后日谈（故事主线完结后的后续篇章），用于收尾、交代角色结局、揭示未完的伏笔。`
             : `本章大纲节点：${node.title || '待定'}\n本章概要：${node.summary || '根据故事自然发展'}`;
         const epiloguePrompt = isEpilogue
-            ? `\n- 注意：本章是【后日谈】，即主线故事完结后的后续篇章，用于收束人物命运、填坑伏笔、展现故事世界的新面貌。`
+            ? `\n- 注意：本章是【后日谈】，即主线故事完结后的后续篇章，用于收束人物命运、填坑伏笔、展现故事世界的新面貌。 在章节正文开始前，可以用 <ChapterTitle> 自定义标题  为本章拟定一个吸引人的章节名，无需额外拟定题目于正文。在后日谈章节中，你需要自拟章节标题，并在章节正文中合理交代角色命运、世界观变化和未解之谜。`
             : '';
-        const systemPrompt = `你是一个专业的小说作家。根据以下完整的设定和大纲，写出精彩的小说章节。${epiloguePrompt}
+        const systemPrompt = `你是一个专业的小说作家。根据以下完整的设定和大纲，写出精彩的小说章节。
 【设定】
 ${bibleContext}
 【大纲】
@@ -682,7 +682,6 @@ ${JSON.stringify(outline.nodes)}
 - 文风：${novel.style || '文学性'}
 - 描写细腻，对话生动，情节推进有力
 - 使用中文写作
-- 在章节正文开始前，可以用 <ChapterTitle> 自定义标题  为本章拟定一个吸引人的章节名，无需额外拟定题目于正文。
 - 章节正文写完后，用 <Note> 标签附上本章的故事笔记，格式如下：
   <Note>
   ## 关键事件
@@ -706,11 +705,14 @@ ${JSON.stringify(outline.nodes)}
         if (storyNotes) {
             contextParts.push(`【累积故事笔记】\n${storyNotes}`);
         }
-        if (previousChapterFull) {
-            // 上一章最后 3000 字保持叙事连贯
-            contextParts.push(`【上一章结尾】\n${previousChapterFull.slice(-3000)}`);
+        if (!isEpilogue) {
+            if (previousChapterFull) {
+                contextParts.push(`【上一章结尾】\n${previousChapterFull.slice(-3000)}`);
+            }
+            contextParts.push(`请写出《${novel.title || '未命名'}》的第 ${chapterNumber} 章。`);
+        } else {
+            contextParts.push(epiloguePrompt);
         }
-        contextParts.push(`请写出《${novel.title || '未命名'}》的第 ${chapterNumber} 章。`);
         contextParts.push(`请开始写作。`);
         const userPrompt = contextParts.join('\n\n');
         const messages = [{
@@ -1413,6 +1415,42 @@ class App {
         document.getElementById('btn-import-book').addEventListener('click', () => document.getElementById('import-file-input').click());
         document.getElementById('btn-export-book').addEventListener('click', () => this._onExportBook());
         document.getElementById('import-file-input').addEventListener('change', (e) => this._onImportAll(e));
+        // Drag & drop on library view
+        const libView = document.getElementById('view-library');
+        const dropOverlay = document.getElementById('drop-overlay');
+        let dragCounter = 0;
+        const hideDrop = () => { dragCounter = 0; dropOverlay.classList.add('hidden'); };
+        document.addEventListener('dragenter', (e) => {
+            if (!libView.classList.contains('active')) return;
+            dragCounter++;
+            dropOverlay.classList.remove('hidden');
+            dropOverlay.classList.add('drag-over');
+        });
+        document.addEventListener('dragleave', (e) => {
+            dragCounter--;
+            if (dragCounter <= 0) hideDrop();
+        });
+        document.addEventListener('dragover', (e) => e.preventDefault());
+        dropOverlay.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropOverlay.classList.add('drag-over');
+        });
+        dropOverlay.addEventListener('dragleave', (e) => {
+            e.stopPropagation();
+            dropOverlay.classList.remove('drag-over');
+        });
+        dropOverlay.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            hideDrop();
+            const file = e.dataTransfer?.files?.[0];
+            if (!file || !file.name.endsWith('.json')) {
+                this.ui.toast('请拖入 .json 文件', 'warning');
+                return;
+            }
+            this._onImportAll({ target: { files: [file] } });
+        });
         document.getElementById('btn-clear-all').addEventListener('click', () => this._onClearAll());
         document.getElementById('settings-font-size').addEventListener('input', (e) => {
             this.ui.fontSize = parseInt(e.target.value);
