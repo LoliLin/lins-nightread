@@ -1335,26 +1335,29 @@ class App {
             const resp = await fetch(url);
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const data = await resp.json();
-            if (!data || !data.novel) throw new Error('数据格式错误');
-            await this.storage.saveNovel(data.novel);
-            if (data.bible) await this.storage.saveBible(data.bible);
-            if (data.outline) await this.storage.saveOutline(data.outline);
-            for (const ch of (data.chapters || [])) await this.storage.saveChapter(ch);
-            for (const b of (data.branches || [])) await this.storage.saveBranch(b);
-            // 恢复 tokens 和 notes
-            if (data._tokens) {
-                for (const [key, val] of Object.entries(data._tokens)) {
-                    localStorage.setItem(`nightread_tokens_${key}`, String(val));
+            if (data.type === 'nightread-book' && data.novel) {
+                await this.storage.saveNovel(data.novel);
+                if (data.bible) await this.storage.saveBible(data.bible);
+                if (data.outline) await this.storage.saveOutline(data.outline);
+                for (const ch of (data.chapters || [])) await this.storage.saveChapter(ch);
+                for (const b of (data.branches || [])) await this.storage.saveBranch(b);
+                // 恢复单书导出的 tokens 和 notes
+                if (data._tokens) {
+                    for (const [key, val] of Object.entries(data._tokens)) {
+                        localStorage.setItem(`nightread_tokens_${key}`, String(val));
+                    }
                 }
-            }
-            if (data._notes) {
-                for (const [key, val] of Object.entries(data._notes)) {
-                    localStorage.setItem(`nightread_notes_${key}`, val);
+                if (data._notes) {
+                    for (const [key, val] of Object.entries(data._notes)) {
+                        localStorage.setItem(`nightread_notes_${key}`, val);
+                    }
                 }
+            } else {
+                await this.storage.importAll(data);
             }
-            this.ui.toast(`已导入《${data.novel.title || '未命名'}》✓`, 'success');
+            await this.storage.init();
+            this.ui.toast('导入成功 ✓', 'success');
             await this._refreshLibrary();
-            this._navigateToLibrary();
         } catch (e) {
             console.error('Import from URL failed:', e);
             this.ui.toast(`导入失败: ${e.message}`, 'error');
