@@ -682,6 +682,7 @@ ${JSON.stringify(outline.nodes)}
 - 文风：${novel.style || '文学性'}
 - 描写细腻，对话生动，情节推进有力
 - 使用中文写作
+- 在章节正文开始前，用 <ChapterTitle>自定义标题</ChapterTitle> 为本章拟定一个吸引人的章节名
 - 章节正文写完后，用 <Note> 标签附上本章的故事笔记，格式如下：
   <Note>
   ## 关键事件
@@ -745,24 +746,37 @@ ${JSON.stringify(outline.nodes)}
                 content: '（生成内容为空，请重试）'
             };
         }
+        // Parse chapter title — <ChapterTitle>自定义标题</ChapterTitle>
+        const titleTag = '<ChapterTitle>';
+        const titleClose = '</ChapterTitle>';
+        const titleIdx = text.indexOf(titleTag);
+        const titleEndIdx = text.indexOf(titleClose);
+        let title = '';
+        let cleanText = text.trim();
+        if (titleIdx !== -1 && titleEndIdx !== -1) {
+            title = text.slice(titleIdx + titleTag.length, titleEndIdx).trim();
+            // 从文本中移除标题标签
+            cleanText = (text.slice(0, titleIdx) + text.slice(titleEndIdx + titleClose.length)).trim();
+        }
         // Parse story notes — 只认 <Note> 标签，避免误匹配正文中的 --- 或 **
         const noteTag = '<Note>';
         const closeTag = '</Note>';
-        const openIdx = text.indexOf(noteTag);
-        const closeIdx = text.indexOf(closeTag);
-        let content = text.trim();
+        const openIdx = cleanText.indexOf(noteTag);
+        const closeIdx = cleanText.indexOf(closeTag);
+        let content = cleanText.trim();
         let notes = '';
         if (openIdx !== -1) {
-            content = text.slice(0, openIdx).trim();
+            content = cleanText.slice(0, openIdx).trim();
             if (closeIdx !== -1) {
-                notes = text.slice(openIdx + noteTag.length, closeIdx).trim();
+                notes = cleanText.slice(openIdx + noteTag.length, closeIdx).trim();
             } else {
-                notes = text.slice(openIdx + noteTag.length).trim();
+                notes = cleanText.slice(openIdx + noteTag.length).trim();
             }
         }
         return {
             content,
-            notes
+            notes,
+            title
         };
     }
 }
@@ -1073,13 +1087,14 @@ class UIManager {
             html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-subtle)">';
             html += '<p style="font-size:0.75rem;color:var(--gold);margin-bottom:4px">📖 后日谈</p>';
             html += epilogueChapters.map(ch => {
-                let cls = '';
-                if (ch.chapterNumber < currentChapterNum) cls += 'done';
-                else if (ch.chapterNumber === currentChapterNum) cls += 'current';
+                let cls = 'clickable';
+                if (ch.chapterNumber < currentChapterNum) cls += ' done';
+                else if (ch.chapterNumber === currentChapterNum) cls += ' current';
+                const epTitle = ch.title && !ch.title.startsWith('后日谈') ? ch.title : `后日谈 · 第${ch.epilogueNum || 1}章`;
                 return `
-        <div class="outline-node ${cls}" style="opacity:0.85">
+        <div class="outline-node ${cls}" data-chapter="${ch.chapterNumber}" data-fork="true" style="opacity:0.85">
           <div class="node-dot" style="background:var(--gold)"></div>
-          <div class="node-title">后日谈 · 第${ch.epilogueNum || 1}章</div>
+          <div class="node-title">${this._escape(epTitle)}</div>
         </div>
       `;
             }).join('');
@@ -1986,6 +2001,12 @@ class App {
             this.ui.showTypingIndicator(false);
             // 用纯净内容（去除 ---NOTES---）重新渲染阅读区
             document.getElementById('chapter-body').innerHTML = this.ui._formatChapterContent(result.content);
+            // 如果 AI 返回了自定义章节标题，用它覆盖
+            if (result.title) {
+                chapterTitle = result.title;
+            }
+            document.getElementById('reader-chapter-num').textContent = isEpilogue ? chapterTitle : `第 ${chapterNum} 章`;
+            document.getElementById('chapter-title').textContent = chapterTitle;
             // Build chapter object
             const chapter = {
                 id: `${this.currentNovel.id}_${this.currentBranchId}_ch_${chapterNum}`,
