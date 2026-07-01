@@ -2438,7 +2438,7 @@ class App {
             if (tokens) exportData._tokens[mapKey] = parseInt(tokens, 10);
             if (notes) exportData._notes[mapKey] = notes;
         }
-        };
+        
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
