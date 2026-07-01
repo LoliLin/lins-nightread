@@ -1694,9 +1694,18 @@ class App {
         try {
             const text = await file.text();
             const data = JSON.parse(text);
-            await this.storage.importAll(data);
-            await this.storage.init(); // Re-initialize after import
-            this.ui.toast('数据导入成功 ✓', 'success');
+            // 兼容两种格式：全量备份 {novels:[], bibles:[]} 和单书导出 {type:'nightread-book', novel:{}, ...}
+            if (data.type === 'nightread-book' && data.novel) {
+                await this.storage.saveNovel(data.novel);
+                if (data.bible) await this.storage.saveBible(data.bible);
+                if (data.outline) await this.storage.saveOutline(data.outline);
+                for (const ch of (data.chapters || [])) await this.storage.saveChapter(ch);
+                for (const b of (data.branches || [])) await this.storage.saveBranch(b);
+            } else {
+                await this.storage.importAll(data);
+            }
+            await this.storage.init();
+            this.ui.toast('导入成功 ✓', 'success');
             await this._refreshLibrary();
         } catch (e) {
             this.ui.toast(`导入失败: ${e.message}`, 'error');
