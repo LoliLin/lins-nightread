@@ -664,9 +664,15 @@ ${bibleSummary}
      */
     async generateChapter(bible, outline, novel, chapterNumber, nodeId, previousSummary, previousChapterFull, onToken = null, branchPrompt = null, storyNotes = '') {
         const bibleContext = this._formatBibleContext(bible);
+        const isEpilogue = nodeId && nodeId.startsWith('epilogue_');
         const node = outline.nodes?.find(n => n.id === nodeId) || {};
-        const nodeInfo = `本章大纲节点：${node.title || '待定'}\n本章概要：${node.summary || '根据故事自然发展'}`;
-        const systemPrompt = `你是一个专业的小说作家。根据以下完整的设定和大纲，写出精彩的小说章节。
+        const nodeInfo = isEpilogue
+            ? `本章为后日谈（故事主线完结后的后续篇章），用于收尾、交代角色结局、揭示未完的伏笔。`
+            : `本章大纲节点：${node.title || '待定'}\n本章概要：${node.summary || '根据故事自然发展'}`;
+        const epiloguePrompt = isEpilogue
+            ? `\n- 注意：本章是【后日谈】，即主线故事完结后的后续篇章，用于收束人物命运、填坑伏笔、展现故事世界的新面貌。`
+            : '';
+        const systemPrompt = `你是一个专业的小说作家。根据以下完整的设定和大纲，写出精彩的小说章节。${epiloguePrompt}
 【设定】
 ${bibleContext}
 【大纲】
@@ -690,9 +696,11 @@ ${JSON.stringify(outline.nodes)}
   - 1-3 个合理发展方向
   </Note>`;
         const contextParts = [];
-        contextParts.push(`【本章大纲】\n${nodeInfo}`);
         if (branchPrompt) {
             contextParts.push(`【分支创作方向】\n${branchPrompt}`);
+        }
+        if (nodeInfo) {
+            contextParts.push(`【本章大纲】\n${nodeInfo}`);
         }
         if (storyNotes) {
             contextParts.push(`【累积故事笔记】\n${storyNotes}`);
@@ -711,6 +719,9 @@ ${JSON.stringify(outline.nodes)}
             role: 'user',
             content: userPrompt
         }];
+
+        console.log("[DEBUG] Generating chapter with messages:", messages);
+
         let rawText = '';
         let chapterUsage = null;
         await this.api.streamChat(messages, {
