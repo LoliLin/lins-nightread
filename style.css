@@ -961,6 +961,38 @@ input[type="range"]::-webkit-slider-thumb {
   z-index: 150;
 }
 
+/* World Editor */
+#world-editor-overlay .modal { max-width: 700px; width: 95%; }
+#world-editor-overlay .modal-body { max-height: 60vh; overflow-y: auto; }
+#world-editor-overlay [contenteditable]:focus {
+  outline: none;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* Epilogue button */
+.btn-epilogue {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  margin: 0 auto;
+  padding: 14px 24px;
+  text-align: center;
+  background: linear-gradient(135deg, #b8860b, #d4a017, #e2c870);
+  color: #1a1a0a;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: var(--font-sans);
+}
+.btn-epilogue:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(184, 134, 11, 0.4);
+}
+
 /* --- SETTINGS VIEW --- */
 #view-settings { padding: 24px 32px; height: 100%; overflow-y: auto; }
 .settings-container { max-width: 580px; margin: 0 auto; }

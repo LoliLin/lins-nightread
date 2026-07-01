@@ -915,7 +915,8 @@ class UIManager {
             tropes: tags,
             style: document.getElementById('novel-style').value,
             protagonist: document.getElementById('novel-protagonist').value.trim(),
-            extra: document.getElementById('novel-extra').value.trim()
+            extra: document.getElementById('novel-extra').value.trim(),
+            branchName: document.getElementById('novel-branch-name')?.value?.trim() || ''
         };
     }
     getEditedBible() {
@@ -988,6 +989,18 @@ class UIManager {
             container.innerHTML = `
         <div style="text-align:center;padding:10px 0">
           <p class="text-muted" style="margin-bottom:12px">—— 本卷终 ——</p>
+          <button class="btn-epilogue" data-action="epilogue">
+            📖 续写后日谈
+          </button>
+        </div>
+      `;
+        } else if (window._app?.currentOutline?.nodes && chapterNum > window._app.currentOutline.nodes.length) {
+            // Beyond outline = epilogue mode, show epilogue button again
+            container.innerHTML = `
+        <div style="text-align:center;padding:10px 0">
+          <button class="btn-epilogue" data-action="epilogue">
+            📖 续写后日谈 · 第${chapterNum - window._app.currentOutline.nodes.length + 1}章
+          </button>
         </div>
       `;
         } else {
@@ -1021,7 +1034,9 @@ class UIManager {
         // 只显示有对应章节的节点（已生成缓存的）
         const generatedChapters = chapters?.filter(c => c?.content) || [];
         const generatedNums = new Set(generatedChapters.map(c => c.chapterNumber));
-        container.innerHTML = outline.nodes.map((node, i) => {
+        let html = '';
+        // Outline nodes
+        html += outline.nodes.map((node, i) => {
             const chNum = i + 1;
             const exists = generatedNums.has(chNum);
             if (!exists) return ''; // 未生成的不渲染
@@ -1031,21 +1046,31 @@ class UIManager {
             // 第一个节点默认作为"序章"显示章节号
             const label = node.title || `第 ${chNum} 章`;
             return `
-
         <div class="outline-node ${cls}" data-chapter="${chNum}" data-fork="true">
-
           <div class="node-dot"></div>
-
           <div class="node-title">${label}</div>
-
         </div>
-
       `;
         }).filter(Boolean).join('');
-        // 如果一个已生成节点都没有
-        if (container.innerHTML.trim() === '') {
-            container.innerHTML = '<p class="text-muted" style="font-size:0.8rem">暂无已生成的章节</p>';
+        // Epilogue chapters (后日谈)
+        const epilogueChapters = generatedChapters.filter(c => c.isEpilogue);
+        if (epilogueChapters.length > 0) {
+            html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-subtle)">';
+            html += '<p style="font-size:0.75rem;color:var(--gold);margin-bottom:4px">📖 后日谈</p>';
+            html += epilogueChapters.map(ch => {
+                let cls = '';
+                if (ch.chapterNumber < currentChapterNum) cls += 'done';
+                else if (ch.chapterNumber === currentChapterNum) cls += 'current';
+                return `
+        <div class="outline-node ${cls}" style="opacity:0.85">
+          <div class="node-dot" style="background:var(--gold)"></div>
+          <div class="node-title">后日谈 · 第${ch.epilogueNum || 1}章</div>
+        </div>
+      `;
+            }).join('');
+            html += '</div>';
         }
+        container.innerHTML = html || '<p class="text-muted" style="font-size:0.8rem">暂无已生成的章节</p>';
     }
     updateCharacterList(bible) {
         const container = document.getElementById('character-list');
@@ -1198,6 +1223,8 @@ class App {
         this.isGenerating = false;
         // Story notes accumulator
         this.currentStoryNotes = '';
+        // Epilogue (后日谈) counter
+        this.epilogueCount = 0;
     }
     async init() {
         try {
@@ -1268,6 +1295,13 @@ class App {
         document.getElementById('reader-choices').addEventListener('click', (e) => this._onReaderBottomClick(e));
         document.getElementById('sidebar-overlay').addEventListener('click', () => this.ui.toggleSidebar());
         document.getElementById('btn-download-book').addEventListener('click', () => this._onDownloadBook());
+        document.getElementById('btn-edit-world').addEventListener('click', () => this._onEditWorld());
+        document.getElementById('world-editor-save').addEventListener('click', () => this._onWorldEditorSave());
+        document.getElementById('world-editor-cancel').addEventListener('click', () => this._onWorldEditorCancel());
+        document.getElementById('world-editor-close').addEventListener('click', () => this._onWorldEditorCancel());
+        document.getElementById('world-editor-overlay').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) this._onWorldEditorCancel();
+        });
         document.getElementById('outline-progress').addEventListener('click', (e) => this._onOutlineNodeClick(e));
         document.getElementById('outline-progress').addEventListener('contextmenu', (e) => this._onSidebarContextMenu(e));
         // 移动端长按 -> 签出分支
@@ -1747,12 +1781,13 @@ class App {
         outline.novelId = novel.id;
         await this.storage.saveOutline(outline);
         // Create 'main' branch
+        const branchNameInput = document.getElementById('novel-branch-name')?.value?.trim();
         const mainBranch = {
             id: novel.id + '_main',
             novelId: novel.id,
             parentBranchId: null,
             forkChapter: 0,
-            forkPrompt: '主分支',
+            forkPrompt: branchNameInput || '主分支',
             createdAt: Date.now()
         };
         await this.storage.saveBranch(mainBranch);
@@ -1866,8 +1901,15 @@ class App {
             }
         }
         // Update UI
-        const chapterTitle = this.currentOutline?.nodes?.find(n => n.id === nodeId)?.title || `第 ${chapterNum} 章`;
-        document.getElementById('reader-chapter-num').textContent = `第 ${chapterNum} 章`;
+        const isEpilogue = nodeId && nodeId.startsWith('epilogue_');
+        let chapterTitle;
+        if (isEpilogue) {
+            const epilogueNum = nodeId.split('_')[1] || '1';
+            chapterTitle = `后日谈 · 第${epilogueNum}章`;
+        } else {
+            chapterTitle = this.currentOutline?.nodes?.find(n => n.id === nodeId)?.title || `第 ${chapterNum} 章`;
+        }
+        document.getElementById('reader-chapter-num').textContent = isEpilogue ? chapterTitle : `第 ${chapterNum} 章`;
         document.getElementById('chapter-title').textContent = chapterTitle;
         document.getElementById('chapter-body').innerHTML = '<p class="text-muted">AI 正在构思...</p>';
         document.getElementById('reader-choices').innerHTML = '';
@@ -1890,7 +1932,9 @@ class App {
                 chapterNumber: chapterNum,
                 title: chapterTitle,
                 content: result.content,
-                summary: ''
+                summary: '',
+                isEpilogue: isEpilogueNode || false,
+                epilogueNum: isEpilogueNode ? this.epilogueCount : undefined
             };
             await this.storage.saveChapter(chapter);
             // Update local chapters
@@ -1922,7 +1966,10 @@ class App {
             }
             // Update UI
             document.getElementById('chapter-title').textContent = chapterTitle;
-            const genNode = this.currentOutline?.nodes?.find(n => n.id === nodeId) || null;
+            const isEpilogueNode = nodeId && nodeId.startsWith('epilogue_');
+            const genNode = isEpilogueNode
+                ? { isEnding: false }
+                : (this.currentOutline?.nodes?.find(n => n.id === nodeId) || null);
             const isEnding = genNode?.isEnding || false;
             this.ui.showReaderBottom(chapterNum, isEnding);
             this._updateReaderSidebar();
@@ -1943,6 +1990,16 @@ class App {
     }
     async _onReaderBottomClick(e) {
         if (this.isGenerating) return;
+        // Handle epilogue button
+        const epilogueBtn = e.target.closest('.btn-epilogue');
+        if (epilogueBtn) {
+            this.epilogueCount++;
+            const nodeId = `epilogue_${this.epilogueCount}`;
+            this.currentChapterNum = (this.currentOutline?.nodes?.length || 0) + this.epilogueCount;
+            await this._generateChapter(this.currentChapterNum, nodeId);
+            return;
+        }
+        // Handle next chapter button
         const btn = e.target.closest('.next-chapter-btn');
         if (!btn) return;
         const nextNodeId = this.currentOutline?.nodes?.[this.currentChapterNum]?.id;
@@ -1952,6 +2009,53 @@ class App {
         }
         this.currentChapterNum++;
         await this._generateChapter(this.currentChapterNum, nextNodeId);
+    }
+    async _onEditWorld() {
+        if (!this.currentBible || !this.currentOutline) {
+            this.ui.toast('没有可编辑的世界观数据', 'warning');
+            return;
+        }
+        document.getElementById('world-editor-bible').textContent = JSON.stringify(this.currentBible, null, 2);
+        document.getElementById('world-editor-outline').textContent = JSON.stringify(this.currentOutline, null, 2);
+        document.getElementById('world-editor-overlay').classList.remove('hidden');
+    }
+    async _onWorldEditorSave() {
+        try {
+            const bibleText = document.getElementById('world-editor-bible').textContent.trim();
+            const outlineText = document.getElementById('world-editor-outline').textContent.trim();
+            if (!bibleText || !outlineText) {
+                this.ui.toast('内容不能为空', 'warning');
+                return;
+            }
+            const newBible = JSON.parse(bibleText);
+            const newOutline = JSON.parse(outlineText);
+            // Validate structure
+            if (!newBible.worldSetting && !newBible.characters) {
+                this.ui.toast('世界观设定缺少必要字段', 'warning');
+                return;
+            }
+            if (!newOutline.nodes || !Array.isArray(newOutline.nodes)) {
+                this.ui.toast('大纲缺少 nodes 数组', 'warning');
+                return;
+            }
+            // Save to IndexedDB
+            newBible.novelId = this.currentNovel.id;
+            newOutline.novelId = this.currentNovel.id;
+            await this.storage.saveBible(newBible);
+            await this.storage.saveOutline(newOutline);
+            // Update current references
+            this.currentBible = newBible;
+            this.currentOutline = newOutline;
+            // Update sidebar
+            this._updateReaderSidebar();
+            this.ui.toast('世界观/大纲已更新 ✓', 'success');
+            document.getElementById('world-editor-overlay').classList.add('hidden');
+        } catch (e) {
+            this.ui.toast(`保存失败: JSON 格式错误 - ${e.message}`, 'error');
+        }
+    }
+    _onWorldEditorCancel() {
+        document.getElementById('world-editor-overlay').classList.add('hidden');
     }
     _onSidebarContextMenu(e) {
         const nodeEl = e.target.closest('.outline-node.clickable');
@@ -1996,6 +2100,8 @@ class App {
                 createdAt: Date.now()
             };
             await this.storage.saveBranch(branch);
+            // 立即刷新分支列表
+            this._allBranches = await this.storage.getBranches(this.currentNovel.id);
             // Copy story notes from parent branch
             const parentNotes = this._loadStoryNotes(this.currentNovel.id, this.currentBranchId);
             this.currentStoryNotes = parentNotes || '';
@@ -2004,7 +2110,7 @@ class App {
             this.currentBranchId = branchId;
             this.currentChapterNum = chapterNum;
             this.currentChapters = await this.storage.getChaptersByBranch(this.currentNovel.id, branchId);
-            // 展示 forkChapter 并生成下一章
+            // 展示 forkChapter 并刷新侧栏（分支列表立即可见）
             const forkChapter = this.currentChapters.find(c => c.chapterNumber === chapterNum);
             if (forkChapter) {
                 this.ui.showReader(this.currentNovel, forkChapter);

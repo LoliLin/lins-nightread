@@ -185,6 +185,11 @@
             <textarea id="novel-extra" class="input-dark textarea" rows="3" placeholder="任何关于故事的特殊要求，比如：要有猫、禁止恋爱线、第一人称视角..."></textarea>
           </div>
 
+          <div class="form-group">
+            <label for="novel-branch-name">主分支名称（可选）</label>
+            <input type="text" id="novel-branch-name" class="input-dark" placeholder="默认使用小说标题">
+          </div>
+
           <div class="wizard-buttons">
             <button id="btn-wizard-cancel" class="btn-secondary">取消</button>
             <button id="btn-wizard-next-1" class="btn-primary btn-glow">生成世界观设定 →</button>
@@ -288,6 +293,7 @@
             <div class="world-rules" id="world-rules-quick">
               <!-- Quick reference -->
             </div>
+            <button id="btn-edit-world" class="btn-secondary" style="width:100%;margin-top:8px">✏️ 编辑世界观 / 大纲</button>
           </div>
         </aside>
       </div>
@@ -403,6 +409,26 @@
         </div>
         <div class="modal-body" id="modal-body"></div>
         <div class="modal-footer" id="modal-footer"></div>
+      </div>
+    </div>
+
+    <!-- World Editor Overlay -->
+    <div id="world-editor-overlay" class="modal-overlay hidden">
+      <div class="modal" style="max-width:700px;width:95%">
+        <div class="modal-header">
+          <h3>编辑世界观 / 大纲</h3>
+          <button class="btn-icon" id="world-editor-close">✕</button>
+        </div>
+        <div class="modal-body" style="max-height:60vh;overflow-y:auto">
+          <h4 style="font-size:0.95rem;margin-bottom:6px;color:var(--text-secondary)">世界观设定 (JSON)</h4>
+          <div id="world-editor-bible" contenteditable="true" style="background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:6px;padding:12px;font-family:var(--font-mono);font-size:0.8rem;white-space:pre-wrap;min-height:150px;margin-bottom:16px;color:var(--text-primary)"></div>
+          <h4 style="font-size:0.95rem;margin-bottom:6px;color:var(--text-secondary)">故事大纲 (JSON)</h4>
+          <div id="world-editor-outline" contenteditable="true" style="background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:6px;padding:12px;font-family:var(--font-mono);font-size:0.8rem;white-space:pre-wrap;min-height:150px;color:var(--text-primary)"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="world-editor-cancel">取消</button>
+          <button class="btn-primary" id="world-editor-save">保存修改</button>
+        </div>
       </div>
     </div>
 
