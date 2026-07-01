@@ -329,7 +329,7 @@ class APIManager {
             messages: messages,
             temperature: temperature,
             max_tokens: maxTokens,
-            stream: true
+            stream: true,
             stream_options: { include_usage: true },
         };
         if (this.settings.reasoner) {
@@ -1102,7 +1102,7 @@ class UIManager {
             const tokenStr = tokens > 0 ? (tokens >= 1000 ? (tokens / 1000).toFixed(1) + 'k' : tokens + '') : '';
             const detailParts = [];
             if (!isMain) detailParts.push(`第 ${b.forkChapter} 章签出`);
-            if (tokenStr) detailParts.push(`${tokenStr} ts`);
+            if (tokenStr) detailParts.push(`${tokenStr} tokens`);
             const detail = detailParts.join(' · ');
             return `
 
@@ -1386,27 +1386,17 @@ class App {
     }
     async _refreshLibrary() {
         const novels = await this.storage.getAllNovels();
-        const branchesMap = new Map();
         const novelId2Token = {}; 
         
-        /*
-        await Promise.all(
-            novels.map(async (novel) => {
-                const branches = await this.storage.getBranches(novel.id);
-                branchesMap.set(novel.id, branches);
-            })
-        );
-
         for (const novel of novels) {
-            const branches = branchesMap.get(novel.id) || [];
+            const branches = await this.storage.getBranches(novel.id);
             let tokens = 0;
             for (const b of branches) {
                 const tokenKey = `nightread_tokens_${novel.id}_${b.id}`;
                 tokens += parseInt(localStorage.getItem(tokenKey) || '0', 10);
             }
             novelId2Token[novel.id] = tokens;
-        }*/
-            
+        }
 
         this.ui.renderLibrary(novels, novelId2Token);
     }
@@ -1927,7 +1917,6 @@ class App {
                 const key = 'nightread_tokens_' + this.currentNovel.id + '_' + this.currentBranchId;
                 const prev = parseInt(localStorage.getItem(key) || '0');
                 localStorage.setItem(key, String(prev + tokensThisChapter));
-            }
 
 
             }
