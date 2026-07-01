@@ -667,7 +667,7 @@ ${bibleSummary}
         const isEpilogue = nodeId && nodeId.startsWith('epilogue_');
         const node = outline.nodes?.find(n => n.id === nodeId) || {};
         const nodeInfo = isEpilogue
-            ? `本章为后日谈（故事主线完结后的后续篇章），用于收尾、交代角色结局、揭示未完的伏笔。`
+            ? `本章为后日谈（故事主线完结后的后续篇章），用于收尾、交代角色结局、揭示未完的伏笔。在后日谈章节中，你需要自拟章节标题，并在章节正文中合理交代角色命运、世界观变化和未解之谜。`
             : `本章大纲节点：${node.title || '待定'}\n本章概要：${node.summary || '根据故事自然发展'}`;
         const epiloguePrompt = isEpilogue
             ? `\n- 注意：本章是【后日谈】，即主线故事完结后的后续篇章，用于收束人物命运、填坑伏笔、展现故事世界的新面貌。`
@@ -682,7 +682,7 @@ ${JSON.stringify(outline.nodes)}
 - 文风：${novel.style || '文学性'}
 - 描写细腻，对话生动，情节推进有力
 - 使用中文写作
-- 在章节正文开始前，用 <ChapterTitle>自定义标题</ChapterTitle> 为本章拟定一个吸引人的章节名
+- 在章节正文开始前，可以用 <ChapterTitle> 自定义标题  为本章拟定一个吸引人的章节名，无需额外拟定题目于正文。
 - 章节正文写完后，用 <Note> 标签附上本章的故事笔记，格式如下：
   <Note>
   ## 关键事件
@@ -1014,21 +1014,30 @@ class UIManager {
     }
     showReaderBottom(chapterNum, isEnding) {
         const container = document.getElementById('reader-choices');
+        const app = window._app;
         if (isEnding) {
+            // 从已生成的章节里算下一个后日谈编号
+            const maxEpilogue = Math.max(0, ...(app?.currentChapters || [])
+                .filter(c => c.isEpilogue)
+                .map(c => c.epilogueNum || 0));
+            const nextEpilogue = maxEpilogue + 1;
             container.innerHTML = `
         <div style="text-align:center;padding:10px 0">
           <p class="text-muted" style="margin-bottom:12px">—— 本卷终 ——</p>
-          <button class="btn-epilogue" data-action="epilogue">
+          <button class="btn-epilogue" data-action="epilogue" data-next-epilogue="${nextEpilogue}">
             📖 续写后日谈
           </button>
         </div>
       `;
-        } else if (window._app?.currentOutline?.nodes && chapterNum > window._app.currentOutline.nodes.length) {
+        } else if (app?.currentOutline?.nodes && chapterNum > app.currentOutline.nodes.length) {
             // Beyond outline = epilogue mode, show epilogue button again
+            const outlineLen = app.currentOutline.nodes.length;
+            const currentEpilogueNum = chapterNum - outlineLen;
+            const nextEpilogue = currentEpilogueNum + 1;
             container.innerHTML = `
         <div style="text-align:center;padding:10px 0">
-          <button class="btn-epilogue" data-action="epilogue">
-            📖 续写后日谈 · 第${chapterNum - window._app.currentOutline.nodes.length + 1}章
+          <button class="btn-epilogue" data-action="epilogue" data-next-epilogue="${nextEpilogue}">
+            📖 续写后日谈 · 第${nextEpilogue}章
           </button>
         </div>
       `;
@@ -2076,9 +2085,10 @@ class App {
         // Handle epilogue button
         const epilogueBtn = e.target.closest('.btn-epilogue');
         if (epilogueBtn) {
-            this.epilogueCount++;
-            const nodeId = `epilogue_${this.epilogueCount}`;
-            this.currentChapterNum = (this.currentOutline?.nodes?.length || 0) + this.epilogueCount;
+            const nextEpilogue = parseInt(epilogueBtn.dataset.nextEpilogue) || (this.epilogueCount + 1);
+            this.epilogueCount = nextEpilogue;
+            const nodeId = `epilogue_${nextEpilogue}`;
+            this.currentChapterNum = (this.currentOutline?.nodes?.length || 0) + nextEpilogue;
             await this._generateChapter(this.currentChapterNum, nodeId);
             return;
         }
