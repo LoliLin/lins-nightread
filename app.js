@@ -971,7 +971,11 @@ class UIManager {
             const trimmed = p.trim();
             if (trimmed.startsWith('# ')) return `<h3 class="chapter-subtitle">${this._escape(trimmed.slice(2))}</h3>`;
             if (trimmed.startsWith('## ')) return `<h3 class="chapter-subtitle">${this._escape(trimmed.slice(3))}</h3>`;
-            return `<p>${this._escape(trimmed)}</p>`;
+            // 处理 **粗体** 和 *斜体*
+            let html = this._escape(trimmed);
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+            return `<p>${html}</p>`;
         }).join('\n');
     }
     appendChapterToken(token) {
@@ -1268,7 +1272,32 @@ class App {
                 this._navigateToLibrary();
             }
         }
+        // URL 参数导入：?import=https://example.com/book.json
+        const importUrl = new URLSearchParams(location.search).get('import');
+        if (importUrl) {
+            this._importFromUrl(importUrl);
+        }
         this._handleResize();
+    }
+    async _importFromUrl(url) {
+        try {
+            this.ui.toast('正在从 URL 导入书籍...', 'info');
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            if (!data || !data.novel) throw new Error('数据格式错误');
+            await this.storage.saveNovel(data.novel);
+            if (data.bible) await this.storage.saveBible(data.bible);
+            if (data.outline) await this.storage.saveOutline(data.outline);
+            for (const ch of (data.chapters || [])) await this.storage.saveChapter(ch);
+            for (const b of (data.branches || [])) await this.storage.saveBranch(b);
+            this.ui.toast(`已导入《${data.novel.title || '未命名'}》✓`, 'success');
+            await this._refreshLibrary();
+            this._navigateToLibrary();
+        } catch (e) {
+            console.error('Import from URL failed:', e);
+            this.ui.toast(`导入失败: ${e.message}`, 'error');
+        }
     }
     _bindEvents() {
         // Splash
@@ -1357,6 +1386,8 @@ class App {
         document.getElementById('btn-settings-save').addEventListener('click', () => this._onSaveSettings());
         document.getElementById('btn-export-all').addEventListener('click', () => this._onExportAll());
         document.getElementById('btn-import-all').addEventListener('click', () => document.getElementById('import-file-input').click());
+        document.getElementById('btn-import-book').addEventListener('click', () => document.getElementById('import-file-input').click());
+        document.getElementById('btn-export-book').addEventListener('click', () => this._onExportBook());
         document.getElementById('import-file-input').addEventListener('change', (e) => this._onImportAll(e));
         document.getElementById('btn-clear-all').addEventListener('click', () => this._onClearAll());
         document.getElementById('settings-font-size').addEventListener('input', (e) => {
@@ -1432,6 +1463,7 @@ class App {
     async _refreshLibrary() {
         const novels = await this.storage.getAllNovels();
         const novelId2Token = {}; 
+        let totalTokens = 0;
         
         for (const novel of novels) {
             const branches = await this.storage.getBranches(novel.id);
@@ -1441,6 +1473,16 @@ class App {
                 tokens += parseInt(localStorage.getItem(tokenKey) || '0', 10);
             }
             novelId2Token[novel.id] = tokens;
+            totalTokens += tokens;
+        }
+
+        // 更新书斋头部的总 token 标签
+        const badge = document.getElementById('total-tokens-badge');
+        if (totalTokens > 0) {
+            badge.textContent = "✤ " + (totalTokens >= 1000 ? `${(totalTokens / 1000).toFixed(1)}Kts` : `${totalTokens} tokens`);
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
         }
 
         this.ui.renderLibrary(novels, novelId2Token);
@@ -2236,6 +2278,34 @@ class App {
         a.click();
         URL.revokeObjectURL(url);
         this.ui.toast(`已下载《${novel.title}》共 ${chapters.length} 章 ✓`, 'success');
+    }
+    async _onExportBook() {
+        if (!this.currentNovel) {
+            this.ui.toast('请先打开一本书', 'warning');
+            return;
+        }
+        const novel = this.currentNovel;
+        const bible = this.currentBible;
+        const outline = this.currentOutline;
+        const chapters = this.currentChapters?.filter(c => c.content) || [];
+        const branches = this._allBranches || [];
+        const exportData = {
+            type: 'nightread-book',
+            version: 1,
+            novel: { id: novel.id, title: novel.title, genre: novel.genre, style: novel.style, tropes: novel.tropes, createdAt: novel.createdAt, lastReadChapter: novel.lastReadChapter, totalChapters: novel.totalChapters },
+            bible: bible ? { novelId: novel.id, ...bible } : null,
+            outline: outline ? { novelId: novel.id, ...outline } : null,
+            chapters: chapters.map(c => ({ ...c })),
+            branches: branches.map(b => ({ ...b }))
+        };
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${novel.title || '未命名'}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        this.ui.toast(`已导出《${novel.title}》✓`, 'success');
     }
     async _onOutlineNodeClick(e) {
         const nodeEl = e.target.closest('.outline-node.clickable');
