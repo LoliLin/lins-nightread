@@ -1994,7 +1994,7 @@ class App {
                 chapterNumber: chapterNum,
                 title: chapterTitle,
                 content: result.content,
-                summary: '',
+                summary: result.content.replace(/<Note>[\s\S]*/,'').trim().slice(0, 200).replace(/\n+/g, ' '),
                 isEpilogue: isEpilogue || false,
                 epilogueNum: isEpilogue ? this.epilogueCount : undefined
             };
