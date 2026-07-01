@@ -1933,8 +1933,8 @@ class App {
                 title: chapterTitle,
                 content: result.content,
                 summary: '',
-                isEpilogue: isEpilogueNode || false,
-                epilogueNum: isEpilogueNode ? this.epilogueCount : undefined
+                isEpilogue: isEpilogue || false,
+                epilogueNum: isEpilogue ? this.epilogueCount : undefined
             };
             await this.storage.saveChapter(chapter);
             // Update local chapters
@@ -2154,7 +2154,9 @@ class App {
         }
         this.currentStoryNotes = this._loadStoryNotes(this.currentNovel.id, branchId);
         this._updateReaderSidebar();
-        this.ui.toast(`已切换到 ${branchId.endsWith('_main') ? '主分支' : '分支'}`, 'info');
+        const branchMeta = this._allBranches?.find(b => b.id === branchId);
+        const branchLabel = branchMeta?.name || (branchId.endsWith('_main') ? '主分支' : '分支');
+        this.ui.toast(`已切换到 ${branchLabel}`, 'info');
     }
     async _onDownloadBook() {
         if (!this.currentNovel) {
