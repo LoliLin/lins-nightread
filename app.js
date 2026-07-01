@@ -196,7 +196,9 @@ class StorageManager {
             bibles: [],
             outlines: [],
             chapters: [],
-            branches: []
+            branches: [],
+            _tokens: {},
+            _notes: {}
         };
         for (const novel of novels) {
             const bible = await this.getBible(novel.id);
@@ -207,6 +209,17 @@ class StorageManager {
             data.chapters.push(...chapters);
             const branches = await this.getBranches(novel.id);
             data.branches.push(...branches);
+            // 收集 localStorage 中的 tokens 和 notes
+            for (const branch of branches) {
+                const bid = branch.id;
+                const tokenKey = `nightread_tokens_${novel.id}_${bid}`;
+                const noteKey = `nightread_notes_${novel.id}_${bid}`;
+                const tokens = localStorage.getItem(tokenKey);
+                const notes = localStorage.getItem(noteKey);
+                const mapKey = `${novel.id}_${bid}`;
+                if (tokens) data._tokens[mapKey] = parseInt(tokens, 10);
+                if (notes) data._notes[mapKey] = notes;
+            }
         }
         return data;
     }
@@ -225,6 +238,17 @@ class StorageManager {
         }
         if (data.branches) {
             for (const branch of data.branches) await this.saveBranch(branch);
+        }
+        // 恢复 localStorage 中的 tokens 和 notes
+        if (data._tokens) {
+            for (const [key, val] of Object.entries(data._tokens)) {
+                localStorage.setItem(`nightread_tokens_${key}`, String(val));
+            }
+        }
+        if (data._notes) {
+            for (const [key, val] of Object.entries(data._notes)) {
+                localStorage.setItem(`nightread_notes_${key}`, val);
+            }
         }
     }
     async clearAll() {
@@ -1317,6 +1341,17 @@ class App {
             if (data.outline) await this.storage.saveOutline(data.outline);
             for (const ch of (data.chapters || [])) await this.storage.saveChapter(ch);
             for (const b of (data.branches || [])) await this.storage.saveBranch(b);
+            // 恢复 tokens 和 notes
+            if (data._tokens) {
+                for (const [key, val] of Object.entries(data._tokens)) {
+                    localStorage.setItem(`nightread_tokens_${key}`, String(val));
+                }
+            }
+            if (data._notes) {
+                for (const [key, val] of Object.entries(data._notes)) {
+                    localStorage.setItem(`nightread_notes_${key}`, val);
+                }
+            }
             this.ui.toast(`已导入《${data.novel.title || '未命名'}》✓`, 'success');
             await this._refreshLibrary();
             this._navigateToLibrary();
@@ -1763,6 +1798,17 @@ class App {
                 if (data.outline) await this.storage.saveOutline(data.outline);
                 for (const ch of (data.chapters || [])) await this.storage.saveChapter(ch);
                 for (const b of (data.branches || [])) await this.storage.saveBranch(b);
+                // 恢复单书导出的 tokens 和 notes
+                if (data._tokens) {
+                    for (const [key, val] of Object.entries(data._tokens)) {
+                        localStorage.setItem(`nightread_tokens_${key}`, String(val));
+                    }
+                }
+                if (data._notes) {
+                    for (const [key, val] of Object.entries(data._notes)) {
+                        localStorage.setItem(`nightread_notes_${key}`, val);
+                    }
+                }
             } else {
                 await this.storage.importAll(data);
             }
@@ -2374,7 +2420,21 @@ class App {
             bible: bible ? { novelId: novel.id, ...bible } : null,
             outline: outline ? { novelId: novel.id, ...outline } : null,
             chapters: chapters.map(c => ({ ...c })),
-            branches: branches.map(b => ({ ...b }))
+            branches: branches.map(b => ({ ...b })),
+            _tokens: {},
+            _notes: {}
+        };
+        // 收集所有分支的 tokens 和 notes
+        for (const branch of branches) {
+            const bid = branch.id;
+            const tokenKey = `nightread_tokens_${novel.id}_${bid}`;
+            const noteKey = `nightread_notes_${novel.id}_${bid}`;
+            const tokens = localStorage.getItem(tokenKey);
+            const notes = localStorage.getItem(noteKey);
+            const mapKey = `${novel.id}_${bid}`;
+            if (tokens) exportData._tokens[mapKey] = parseInt(tokens, 10);
+            if (notes) exportData._notes[mapKey] = notes;
+        }
         };
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
